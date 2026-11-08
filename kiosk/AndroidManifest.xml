@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="local.homedashboard.kiosk">
+
+  <!-- Només per carregar la URL del dashboard a la LAN. Cap altre permís. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <application
+      android:label="@string/app_name"
+      android:hardwareAccelerated="true"
+      android:allowBackup="false"
+      android:usesCleartextTraffic="true"
+      android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:screenOrientation="landscape"
+        android:configChanges="orientation|screenSize|keyboardHidden|keyboard">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+
+    <!-- Apagat per defecte: instal·lar l'APK no ha de canviar el HOME ni mostrar cap selector.
+         S'activa a mà: adb shell pm enable local.homedashboard.kiosk/.Home -->
+    <activity-alias
+        android:name=".Home"
+        android:targetActivity=".MainActivity"
+        android:enabled="false"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.HOME" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity-alias>
+  </application>
+</manifest>

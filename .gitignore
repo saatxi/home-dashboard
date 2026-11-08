@@ -7,3 +7,4 @@
 *.partial
 *.bin
 __pycache__/
+/kiosk/build/

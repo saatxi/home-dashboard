@@ -1,12 +1,115 @@
 #!/usr/bin/env bash
-# Diagnòstic de la cadena USB -> usbipd-win -> WSL -> adb. No canvia res.
-ok(){ echo "[OK]   $*"; }; ko(){ echo "[FALLA] $*"; }
-uname -r | grep -qi microsoft && ok "WSL: $(uname -r)" || ko "No sembla WSL"
-zcat /proc/config.gz 2>/dev/null | grep -q '^CONFIG_USBIP_VHCI_HCD' && ok "Kernel amb USBIP VHCI" || ko "Kernel sense USBIP VHCI"
-lsmod | grep -q vhci_hcd && ok "vhci_hcd carregat" || ko "vhci_hcd no carregat: sudo modprobe vhci_hcd"
-command -v lsusb >/dev/null && ok "lsusb present" || ko "sudo apt install usbutils"
-if [ -d /sys/bus/usb/devices ]; then ok "/sys/bus/usb existeix"; else ko "/sys/bus/usb absent: cal 'usbipd attach --wsl' (Windows) i vhci_hcd"; fi
-lsusb 2>/dev/null | grep -i '1f3a' && ok "Dispositiu Allwinner (1f3a) visible" || ko "Cap dispositiu 1f3a visible (usbipd list / bind / attach)"
-command -v adb >/dev/null && ok "$(adb version | head -1)" || ko "adb no instal·lat"
-timeout 15 adb devices 2>/dev/null
-[ -f /etc/udev/rules.d/51-android.rules ] && ok "regla udev present" || ko "Falta /etc/udev/rules.d/51-android.rules"
+
+DEPENDENCIES=(lsusb adb)
+SCRIPT_NAME=$(basename "$0")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
+
+usage() {
+    cat <<EOM
+
+Diagnòstic de la cadena USB -> usbipd-win -> WSL -> adb. No canvia res.
+
+usage: ${SCRIPT_NAME} [options]
+
+options:
+    -h|--help    Mostra aquesta ajuda
+
+dependencies: ${DEPENDENCIES[@]}
+
+examples:
+    ${SCRIPT_NAME}
+
+EOM
+    exit 1
+}
+
+main() {
+    while [ "$1" != "" ]; do
+        case $1 in
+        -h | --help)
+            usage
+            ;;
+        *)
+            print_error "Opció desconeguda '$1'"
+            usage
+            ;;
+        esac
+        shift
+    done
+
+    local failures=0
+    check_wsl_kernel || failures=$((failures + 1))
+    check_vhci_module || failures=$((failures + 1))
+    check_usb_bus || failures=$((failures + 1))
+    check_allwinner_device || failures=$((failures + 1))
+    check_udev_rule || failures=$((failures + 1))
+    check_adb || failures=$((failures + 1))
+
+    return "$failures"
+}
+
+check_wsl_kernel() {
+    if ! uname -r | grep -qi microsoft; then
+        print_error "No sembla WSL"
+        return 1
+    fi
+    print_success "WSL: $(uname -r)"
+    if ! zcat /proc/config.gz 2>/dev/null | grep -q '^CONFIG_USBIP_VHCI_HCD'; then
+        print_error "Kernel sense USBIP VHCI"
+        return 1
+    fi
+    print_success "Kernel amb USBIP VHCI"
+}
+
+check_vhci_module() {
+    if ! lsmod | grep -q vhci_hcd; then
+        print_error "vhci_hcd no carregat: sudo modprobe vhci_hcd"
+        return 1
+    fi
+    print_success "vhci_hcd carregat"
+}
+
+check_usb_bus() {
+    if [ ! -d /sys/bus/usb/devices ]; then
+        print_error "/sys/bus/usb absent: cal 'usbipd attach --wsl' (Windows) i vhci_hcd"
+        return 1
+    fi
+    print_success "/sys/bus/usb existeix"
+}
+
+check_allwinner_device() {
+    local found
+    found=$(lsusb 2>/dev/null | grep -i '1f3a')
+    if [ -z "$found" ]; then
+        print_error "Cap dispositiu 1f3a visible (usbipd list / bind / attach)"
+        return 1
+    fi
+    print_success "Dispositiu Allwinner visible: ${found}"
+}
+
+check_udev_rule() {
+    if [ ! -f /etc/udev/rules.d/51-android.rules ]; then
+        print_error "Falta /etc/udev/rules.d/51-android.rules"
+        return 1
+    fi
+    print_success "Regla udev present"
+}
+
+# adb start-server pot penjar-se des d'algunes shells: el límit evita bloquejar l'script
+check_adb() {
+    print_success "$(adb version | head -1)"
+    local devices
+    devices=$(timeout 15 adb devices -l 2>/dev/null | tail -n +2 | grep -v '^$')
+    if [ -z "$devices" ]; then
+        print_error "adb no veu cap dispositiu (o el servidor no respon en 15 s)"
+        return 1
+    fi
+    print_success "adb veu: ${devices}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    exit_on_missing_tools "${DEPENDENCIES[@]}"
+    main "$@"
+    exit $?
+fi

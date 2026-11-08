@@ -3,6 +3,7 @@ package local.homedashboard.kiosk;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -36,8 +37,16 @@ public class MainActivity extends Activity {
   private static final int BOOTANIM_ATTEMPTS = 2;
 
   private final Handler handler = new Handler(Looper.getMainLooper());
+  private static final String WAITING_HTML =
+      "<html><body style='margin:0;background:#000;color:#777;font-family:sans-serif;"
+      + "display:flex;align-items:center;justify-content:center;height:100vh;font-size:3vw'>"
+      + "Esperant el servidor\u2026</body></html>";
+
   private WebView web;
   private String url;
+  // La càrrega principal ha fallat i hi ha un reintent armat. Android crida onPageFinished també
+  // per a la pàgina d'error: sense aquest indicador, aquesta crida cancel·laria el reintent.
+  private boolean loadFailed;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -143,6 +152,11 @@ public class MainActivity extends Activity {
     }, "bootanim-exit").start();
   }
 
+  /** La pàgina d'espera que dibuixem nosaltres (sense URL pròpia). */
+  private static boolean isOwnPage(String pageUrl) {
+    return pageUrl == null || pageUrl.startsWith("data:") || "about:blank".equals(pageUrl);
+  }
+
   private boolean sameOrigin(Uri target) {
     Uri base = Uri.parse(url);
     String scheme = target.getScheme();
@@ -164,16 +178,26 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onPageStarted(WebView view, String startedUrl, Bitmap favicon) {
+      Log.i(TAG, "pageStarted " + startedUrl + " own=" + isOwnPage(startedUrl));
+      if (!isOwnPage(startedUrl)) loadFailed = false;
+    }
+
+    @Override
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
       if (!request.isForMainFrame()) return;
       // El servidor pot no estar llest a l'arrencada: es torna a provar fins que respongui.
       Log.w(TAG, "Error carregant " + request.getUrl() + ": " + error.getDescription());
+      loadFailed = true;
+      view.loadDataWithBaseURL(null, WAITING_HTML, "text/html", "utf-8", null);
       handler.removeCallbacks(reload);
       handler.postDelayed(reload, RETRY_MS);
     }
 
     @Override
     public void onPageFinished(WebView view, String finishedUrl) {
+      Log.i(TAG, "pageFinished " + finishedUrl + " failed=" + loadFailed);
+      if (loadFailed || isOwnPage(finishedUrl)) return;
       handler.removeCallbacks(reload);
     }
   }
@@ -181,6 +205,7 @@ public class MainActivity extends Activity {
   private final Runnable reload = new Runnable() {
     @Override
     public void run() {
+      Log.i(TAG, "reload " + url);
       web.loadUrl(url);
     }
   };

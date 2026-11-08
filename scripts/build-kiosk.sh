@@ -70,7 +70,7 @@ build() {
     "${BUILD_TOOLS}/aapt2" link -o "${BUILD_DIR}/base.apk" -I "${PLATFORM_JAR}" \
         --manifest AndroidManifest.xml -A assets "${BUILD_DIR}/res.zip" \
         --java "${BUILD_DIR}/gen" --min-sdk-version 23 --target-sdk-version 28 \
-        --version-code 2 --version-name 0.2
+        --version-code 3 --version-name 0.3
 
     javac -nowarn -source 8 -target 8 -classpath "${PLATFORM_JAR}" -d "${BUILD_DIR}/classes" \
         src/local/homedashboard/kiosk/*.java \

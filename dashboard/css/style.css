@@ -1,0 +1,10 @@
+:root { --fg: #f2f2f2; --dim: rgba(242, 242, 242, .45); --bad: #ffb300; }
+html, body { margin: 0; height: 100%; background: #000; color: var(--fg);
+  font-family: sans-serif; overflow: hidden; }
+main { height: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; }
+#time { font-size: 22vw; font-weight: 200; font-variant-numeric: tabular-nums; line-height: 1; }
+#date { font-size: 4vw; margin-top: 2vh; opacity: .8; text-transform: capitalize; }
+#status { position: fixed; bottom: 2vh; right: 2vw; font-size: 1.6vw; color: var(--dim);
+  font-variant-numeric: tabular-nums; }
+#status.stale { color: var(--bad); }

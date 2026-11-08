@@ -20,6 +20,7 @@ dump(){  # dump <dispositiu-remot> <nom>
 }
 for d in mmcblk0boot0 mmcblk0boot1; do adb shell "[ -e /dev/block/$d ]" && dump "/dev/block/$d" "$d"; done
 for p in $(adb shell 'ls /dev/block/by-name' | tr -d '\r'); do
+  case "$p" in mmcblk0*) continue;; esac   # disc sencer, boot0/1 (ja fets) i RPMB: no són particions
   if { [ "$p" = "UDISK" ] || [ "$p" = "media_data" ]; } && [ $WITH_DATA = 0 ]; then echo "-- salto $p (usa --with-data)"; continue; fi
   dump "/dev/block/by-name/$p" "part-$p"
 done

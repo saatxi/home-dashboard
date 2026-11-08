@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Servidor estàtic amb la política de memòria cau del dashboard.
 
-- index.html i data/: Cache-Control no-cache (es revaliden sempre, així els canvis arriben).
-- css/ i js/: un dia de memòria cau; es refresquen pujant el ?v= a index.html.
+- data/: Cache-Control no-cache (sempre fresc; també porta la capçalera Date i site_version).
+- La resta: un dia de memòria cau. Així el marc pot arrencar amb la pàgina guardada si el servidor
+  encara no respon (les entrades amb no-cache no es serveixen sense xarxa). Les pàgines antigues
+  s'actualitzen soles: data.json publica site_version i la pàgina navega a ?v=<versió>.
 """
 import argparse
 import functools
@@ -12,7 +14,7 @@ import http.server
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         path = self.path.split("?", 1)[0]
-        if path == "/" or path.endswith(".html") or path.startswith("/data/"):
+        if path.startswith("/data/"):
             self.send_header("Cache-Control", "no-cache")
         else:
             self.send_header("Cache-Control", "max-age=86400")

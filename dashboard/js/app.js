@@ -8,6 +8,9 @@ var MAX_TASKS = 8;
 
 var lastOk = null;
 var data = null;
+// Versió d'aquesta pàgina (meta site-version). El marc guarda la pàgina a la memòria cau i pot
+// arrencar amb una versió antiga; si el servidor en té una altra, naveguem a ?v=<versió>.
+var PAGE_VERSION = (document.querySelector('meta[name="site-version"]') || {}).content;
 // El rellotge del marc no és fiable (el RTC es perd quan es talla la corrent). L'hora bona és la del
 // servidor, que arriba a la capçalera Date de cada resposta de data.json.
 var clockOffsetMs = 0;
@@ -135,6 +138,15 @@ function renderAll() {
   renderStatus();
 }
 
+function updatePageIfStale(json) {
+  var wanted = json && json.site_version ? String(json.site_version) : null;
+  if (!wanted || wanted === PAGE_VERSION) return;
+  // El guarda evita un bucle si, tot i anar a ?v=, la pàgina que arriba continua sent antiga.
+  var current = new URLSearchParams(location.search).get('v');
+  if (current === wanted) return;
+  location.replace(location.pathname + '?v=' + encodeURIComponent(wanted));
+}
+
 function refreshData() {
   fetch(DATA_URL, { cache: 'no-store' })
     .then(function (r) {
@@ -143,7 +155,7 @@ function refreshData() {
       if (!isNaN(serverTime)) { clockOffsetMs = serverTime - Date.now(); clockSynced = true; }
       return r.json();
     })
-    .then(function (json) { data = json; lastOk = Date.now(); renderAll(); })
+    .then(function (json) { data = json; lastOk = Date.now(); renderAll(); updatePageIfStale(json); })
     .catch(function () { renderStatus(); });
 }
 

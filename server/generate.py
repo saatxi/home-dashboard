@@ -7,6 +7,7 @@ Config a server/config.json (fora de git; plantilla a config.example.json).
 """
 import json
 import os
+import re
 import sys
 import tempfile
 import urllib.request
@@ -105,6 +106,16 @@ def read_tasks(cfg):
     return tasks
 
 
+def site_version():
+    """Versió de la pàgina, de <meta name="site-version"> a dashboard/index.html."""
+    try:
+        with open(os.path.join(ROOT, "dashboard", "index.html"), encoding="utf-8") as f:
+            match = re.search(r'<meta name="site-version" content="([^"]+)"', f.read())
+        return match.group(1) if match else None
+    except OSError:
+        return None
+
+
 def write_atomic(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
@@ -119,7 +130,8 @@ def main():
         print(f"Falta o és invàlid {CONFIG_PATH} (copieu server/config.example.json)", file=sys.stderr)
         return 1
     previous = load_json(OUT_PATH, {}) or {}
-    data = {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "errors": {}}
+    data = {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "site_version": site_version(), "errors": {}}
     sections = {"weather": fetch_weather, "events": fetch_events, "tasks": read_tasks}
     for name, fn in sections.items():
         try:

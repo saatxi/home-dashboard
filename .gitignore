@@ -1,0 +1,9 @@
+# Dades privades del dispositiu (Wi-Fi, tokens, serials, firmware)
+/backups/
+/diagnostics/
+/frames/
+*.img
+*.img.gz
+*.partial
+*.bin
+__pycache__/

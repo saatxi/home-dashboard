@@ -8,6 +8,10 @@ var MAX_TASKS = 8;
 
 var lastOk = null;
 var data = null;
+// El rellotge del marc no és fiable (el RTC es perd quan es talla la corrent). L'hora bona és la del
+// servidor, que arriba a la capçalera Date de cada resposta de data.json.
+var clockOffsetMs = 0;
+var clockSynced = false;
 
 // Codis meteorològics WMO d'Open-Meteo.
 var WEATHER = [
@@ -15,6 +19,8 @@ var WEATHER = [
   [[51, 53, 55, 56, 57], 'Plugim'], [[61, 63, 65, 66, 67], 'Pluja'], [[71, 73, 75, 77, 85, 86], 'Neu'],
   [[80, 81, 82], 'Ruixats'], [[95, 96, 99], 'Tempesta']
 ];
+
+function nowDate() { return new Date(Date.now() + clockOffsetMs); }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
 function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -37,7 +43,7 @@ function node(tag, cls, text) {
 function dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 
 function dayLabel(d) {
-  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var today = nowDate(); today.setHours(0, 0, 0, 0);
   var diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
   if (diff === 0) return 'Avui';
   if (diff === 1) return 'Demà';
@@ -71,7 +77,7 @@ function renderEvents() {
     list.appendChild(node('li', 'empty', events ? 'Res previst' : 'Sense dades'));
     return;
   }
-  var now = new Date(), shown = 0, lastDay = '';
+  var now = nowDate(), shown = 0, lastDay = '';
   for (var i = 0; i < events.length && shown < MAX_EVENTS; i++) {
     var e = events[i];
     var start = e.all_day ? parseDay(e.start) : new Date(e.start);
@@ -102,19 +108,20 @@ function renderTasks() {
 
 function renderStatus() {
   var status = el('status');
+  document.body.className = clockSynced ? '' : 'unverified';
   if (lastOk === null) {
-    status.textContent = 'sense dades del servidor';
+    status.textContent = 'sense dades del servidor · hora sense verificar';
     status.className = 'stale';
     return;
   }
   var errors = data && data.errors ? Object.keys(data.errors) : [];
   var stale = Date.now() - lastOk > STALE_MS || errors.length > 0;
-  status.textContent = 'servidor ' + hhmm(new Date(lastOk)) + (errors.length ? ' · error: ' + errors.join(', ') : '');
+  status.textContent = 'servidor ' + hhmm(new Date(lastOk + clockOffsetMs)) + (errors.length ? ' · error: ' + errors.join(', ') : '');
   status.className = stale ? 'stale' : '';
 }
 
 function tickClock() {
-  var now = new Date();
+  var now = nowDate();
   el('time').textContent = hhmm(now);
   el('date').textContent =
     now.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -130,7 +137,12 @@ function renderAll() {
 
 function refreshData() {
   fetch(DATA_URL, { cache: 'no-store' })
-    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      var serverTime = Date.parse(r.headers.get('Date'));
+      if (!isNaN(serverTime)) { clockOffsetMs = serverTime - Date.now(); clockSynced = true; }
+      return r.json();
+    })
     .then(function (json) { data = json; lastOk = Date.now(); renderAll(); })
     .catch(function () { renderStatus(); });
 }

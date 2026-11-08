@@ -89,7 +89,7 @@ main() {
         start_refresher
     fi
     print_header "Serveixo ${SITE_DIR} a http://${BIND}:${PORT}/"
-    python3 -I -m http.server "${PORT}" --bind "${BIND}" --directory "${SITE_DIR}"
+    python3 -I "${ROOT}/server/static_server.py" --port "${PORT}" --bind "${BIND}" --directory "${SITE_DIR}"
 }
 
 main "$@"

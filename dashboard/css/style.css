@@ -24,3 +24,4 @@ li { margin: 1.2vh 0; line-height: 1.25; }
 #status { position: fixed; bottom: 1.5vh; right: 2vw; font-size: 1.3vw; color: var(--faint);
   font-variant-numeric: tabular-nums; }
 #status.stale { color: var(--bad); }
+body.unverified #time, body.unverified #date { opacity: .3; }

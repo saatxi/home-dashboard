@@ -40,3 +40,13 @@ adb kill-server && adb devices   # accepteu el prompt a la pantalla si surt
 adb shell id                      # esperat: uid=0(root)
 ```
 `/sys/bus/usb` no existeix a WSL fins que hi ha un attach amb `vhci_hcd` carregat.
+
+## Problemes habituals
+- **`Device in error state` a `usbipd attach`:** desconnecteu i torneu a connectar el cable (el BUSID pot canviar), feu `adb kill-server` a Windows, i si cal `usbipd unbind` + `usbipd bind --busid <ID> --force`. Proveu un port USB directe a la placa.
+- **`adb devices` es penja a WSL:** el dimoni no arrenca des d'algunes shells. Engegueu el servidor a part i torneu-ho a provar:
+  ```bash
+  pkill -x adb
+  setsid nohup adb -L tcp:5037 server nodaemon >/dev/null 2>&1 </dev/null &
+  adb devices -l
+  ```
+- **`vhci_hcd` no carregat:** `sudo modprobe vhci_hcd` (cal fer-ho cada cop que es reinicia WSL).

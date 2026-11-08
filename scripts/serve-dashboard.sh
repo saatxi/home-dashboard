@@ -8,11 +8,16 @@ source "${SCRIPT_DIR}/common.sh"
 SITE_DIR="${ROOT}/dashboard"
 PORT=8080
 BIND="127.0.0.1"
+REFRESH_SECONDS=600
+GENERATOR="${ROOT}/server/generate.py"
+VENV_PYTHON="${ROOT}/server/.venv/bin/python"
+REFRESHER_PID=""
 
 usage() {
     cat <<EOM
 
-Serveix dashboard/ amb un servidor estàtic. No toca el dispositiu.
+Serveix dashboard/ amb un servidor estàtic i, si hi ha server/config.json, regenera data.json
+cada ${REFRESH_SECONDS} s (temps, calendari, tasques). No toca el dispositiu.
 Per defecte només escolta a 127.0.0.1 (el marc hi arriba amb 'adb reverse').
 
 usage: ${SCRIPT_NAME} [options]
@@ -20,6 +25,7 @@ usage: ${SCRIPT_NAME} [options]
 options:
     -p|--port N  Port (per defecte ${PORT})
     --lan        Escolta a totes les interfícies (0.0.0.0): visible a la LAN
+    --no-refresh No regeneris data.json (només serveix el que hi ha)
     -h|--help    Mostra aquesta ajuda
 
 dependencies: ${DEPENDENCIES[@]}
@@ -32,8 +38,24 @@ EOM
     exit 1
 }
 
+start_refresher() {
+    if [ ! -x "${VENV_PYTHON}" ] || [ ! -f "${ROOT}/server/config.json" ]; then
+        print_warning "Sense server/.venv o server/config.json: no regenero data.json"
+        return
+    fi
+    (
+        while true; do
+            "${VENV_PYTHON}" "${GENERATOR}" || print_warning "generate.py ha fallat"
+            sleep "${REFRESH_SECONDS}"
+        done
+    ) &
+    REFRESHER_PID=$!
+    trap 'kill "${REFRESHER_PID}" 2>/dev/null || true' EXIT
+}
+
 main() {
     set -euo pipefail
+    REFRESH=true
     while [ "${1:-}" != "" ]; do
         case $1 in
         -p | --port)
@@ -43,6 +65,9 @@ main() {
             ;;
         --lan)
             BIND="0.0.0.0"
+            ;;
+        --no-refresh)
+            REFRESH=false
             ;;
         -h | --help)
             usage
@@ -60,8 +85,11 @@ main() {
         cp "${SITE_DIR}/data/data.example.json" "${SITE_DIR}/data/data.json"
         print_warning "Creo data/data.json a partir de l'exemple"
     fi
+    if [ "${REFRESH}" = true ]; then
+        start_refresher
+    fi
     print_header "Serveixo ${SITE_DIR} a http://${BIND}:${PORT}/"
-    exec python3 -I -m http.server "${PORT}" --bind "${BIND}" --directory "${SITE_DIR}"
+    python3 -I -m http.server "${PORT}" --bind "${BIND}" --directory "${SITE_DIR}"
 }
 
 main "$@"

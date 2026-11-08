@@ -1,0 +1,4 @@
+# Una tasca per línia. "[x]" les marca com a fetes. Les línies que comencen per # s'ignoren.
+[ ] Comprar pa
+[ ] Trucar a l'àvia
+[x] Pagar la factura de la llum

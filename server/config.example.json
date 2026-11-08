@@ -1,0 +1,10 @@
+{
+  "place": "Premià de Dalt",
+  "latitude": 41.49,
+  "longitude": 2.36,
+  "timezone": "Europe/Madrid",
+  "calendar_ical_url": "",
+  "calendar_ical_file": "",
+  "calendar_days_ahead": 14,
+  "tasks_file": "server/tasks.txt"
+}

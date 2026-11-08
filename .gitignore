@@ -9,3 +9,6 @@
 __pycache__/
 /kiosk/build/
 /dashboard/data/data.json
+/server/.venv/
+/server/config.json
+/server/tasks.txt

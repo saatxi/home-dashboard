@@ -3,7 +3,7 @@
 Regles: només lectura al dispositiu; cap escriptura fins tenir un backup verificat (mida exacta + SHA-256 coincident amb el dispositiu).
 
 ```bash
-scripts/identify.sh                 # confirma el model (para si ro.board.platform != sun50iw10p1)
+scripts/identify.sh                 # confirma el model (para si ro.hardware != sun50iw10p1)
 scripts/backup.sh                   # boot0/boot1 + cada partició, excepte UDISK i media_data
 scripts/backup.sh --with-data       # inclou /data (~26 GB, dades privades)
 scripts/verify-backup.sh backups/<data>

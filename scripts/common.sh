@@ -23,6 +23,7 @@ require_device() {
 
 # Para al primer desajust d'identitat (regla del repo de referència)
 check_identity() {
-  local p; p="$(adb shell getprop ro.board.platform | tr -d '\r')"
-  [ "$p" = "$EXPECTED_PLATFORM" ] || { echo "ATURA: ro.board.platform='$p', s'esperava '$EXPECTED_PLATFORM'. No és el dispositiu documentat." >&2; exit 2; }
+  local p m; p="$(adb shell getprop ro.hardware | tr -d '\r')"; m="$(adb shell getprop ro.product.model | tr -d '\r')"
+  [ "$p" = "$EXPECTED_PLATFORM" ] || { echo "ATURA: ro.hardware='$p', s'esperava '$EXPECTED_PLATFORM'. No és el dispositiu documentat." >&2; exit 2; }
+  echo "Identitat OK: model=$m ro.hardware=$p"
 }

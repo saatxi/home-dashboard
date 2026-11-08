@@ -19,5 +19,5 @@ run usb-state 'getprop sys.usb.state'
 run sizes 'for d in mmcblk0 mmcblk0boot0 mmcblk0boot1; do echo $d $(cat /sys/block/$d/size 2>/dev/null) sectors; done'
 run su-perms 'ls -l /system/xbin/su /system/bin/su 2>&1'
 run wlan 'ip addr show 2>&1 | grep -v link/ether'
-echo "Resum:"; grep -E 'ro.product.(model|brand)|ro.build.(fingerprint|version.release)|ro.board.platform|ro.secure|ro.debuggable' "$out/getprop.txt"
+echo "Resum:"; grep -E 'ro.product.(model|brand)|ro.build.(fingerprint|version.release)|ro.hardware|ro.board.platform|ro.secure|ro.debuggable' "$out/getprop.txt"
 echo "Guardat a $out (conté dades privades: no commiteu)"

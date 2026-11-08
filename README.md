@@ -32,4 +32,6 @@ Regla: res d'escriptura al dispositiu fins tenir un backup verificat. `backups/`
 
 - [docs/wsl-setup.md](docs/wsl-setup.md): instal·lar eines i compartir el marc amb WSL (usbipd).
 - [docs/backup.md](docs/backup.md): procediment, què cobreix el backup i què no, i com verificar-lo.
+- [docs/recovery.md](docs/recovery.md): camí de tornada (ADB, fastboot, FEL) i resultats.
+- [docs/hardening.md](docs/hardening.md): canvis reversibles al marc i com desfer-los.
 - [docs/xoro-cpf10pf.md](docs/xoro-cpf10pf.md): notes del nostre exemplar.

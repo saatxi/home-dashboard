@@ -9,7 +9,9 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--fg);
 #weather { margin-top: 5vh; text-align: center; }
 .wnow { font-size: 4vw; }
 .wplace { font-size: 1.6vw; color: var(--dim); margin-top: .5vh; }
-.wdays { display: flex; gap: 3vw; margin-top: 3vh; font-size: 1.7vw; color: var(--dim); }
+.wdays { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 3vh; font-size: 1.7vw; color: var(--dim); }
+/* Marges i no gap: el WebView 74 del marc no suporta gap en flex. */
+.wday { margin: 0 1.5vw; }
 .wday b { display: block; color: var(--fg); font-weight: 400; text-transform: capitalize; }
 #right { padding: 5vh 3vw 5vh 1vw; overflow: hidden; border-left: 1px solid var(--faint); }
 h2 { font-size: 1.5vw; font-weight: 400; letter-spacing: .15em; text-transform: uppercase;
@@ -20,7 +22,9 @@ li { margin: 1.2vh 0; line-height: 1.25; }
 .when { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: .8em; }
 .day { color: var(--dim); font-size: 1.5vw; margin-top: 2vh; text-transform: capitalize; }
 .done { color: var(--faint); text-decoration: line-through; }
-.empty { color: var(--faint); }
+.empty, .more { color: var(--faint); }
+.more { font-size: 1.5vw; }
+#weather.old { opacity: .4; }
 #status { position: fixed; bottom: 1.5vh; right: 2vw; font-size: 1.3vw; color: var(--faint);
   font-variant-numeric: tabular-nums; }
 #status.stale { color: var(--bad); }

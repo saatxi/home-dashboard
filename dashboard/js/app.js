@@ -3,11 +3,23 @@
 var DATA_URL = 'data/data.json';
 var REFRESH_MS = 30 * 1000;
 var STALE_MS = 20 * 60 * 1000;
+// Antiguitat màxima de data.json (moment en què el servidor el va generar) abans de marcar-ho com a vell.
+var GENERATED_STALE_MS = 25 * 60 * 1000;
+var WEATHER_OLD_MS = 3 * 60 * 60 * 1000;
+var FETCH_TIMEOUT_MS = 10 * 1000;
 var MAX_EVENTS = 7;
 var MAX_TASKS = 8;
 
 var lastOk = null;
 var data = null;
+// Evita que una petició penjada s'acumuli amb les següents; reqId distingeix peticions velles de la vigent.
+var inflight = false;
+var reqId = 0;
+// Seccions que no s'han pogut pintar (es mostren al peu).
+var paintFailed = [];
+// Zona horària de data.json (opcional); sense ella s'usa la del dispositiu.
+var tz = null;
+var tzFmt = null;
 // Versió d'aquesta pàgina (meta site-version). El marc guarda la pàgina a la memòria cau i pot
 // arrencar amb una versió antiga; si el servidor en té una altra, naveguem a ?v=<versió>.
 var PAGE_VERSION = (document.querySelector('meta[name="site-version"]') || {}).content;
@@ -26,8 +38,47 @@ var WEATHER = [
 function nowDate() { return new Date(Date.now() + clockOffsetMs); }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
-function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 function el(id) { return document.getElementById(id); }
+
+function setZone(name) {
+  name = name || null;
+  if (name !== tz) { tz = name; tzFmt = null; }
+}
+
+// Any, mes, dia, hora i minut d'un Date a la zona de data.json (el marc pot tenir-ne una altra de configurada).
+function zoneParts(d) {
+  if (!tzFmt) {
+    var o = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+    if (tz) o.timeZone = tz;
+    try { tzFmt = new Intl.DateTimeFormat('en-GB', o); }
+    catch (e) { tz = null; delete o.timeZone; tzFmt = new Intl.DateTimeFormat('en-GB', o); } // zona desconeguda
+  }
+  var p = {};
+  tzFmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+  return { y: +p.year, m: +p.month, d: +p.day, hh: +p.hour % 24, mm: +p.minute }; // algunes versions donen 24 a mitjanit
+}
+
+function hhmm(d) { var p = zoneParts(d); return pad(p.hh) + ':' + pad(p.mm); }
+
+// Data d'un Date a la zona de data.json, com a clau "AAAA-MM-DD" (comparable com a text).
+function dayKey(d) { var p = zoneParts(d); return p.y + '-' + pad(p.m) + '-' + pad(p.d); }
+
+function dayNum(key) { var p = key.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000; }
+
+function fmtDate(d, o) {
+  if (tz) {
+    o.timeZone = tz;
+    try { return d.toLocaleDateString('ca', o); } catch (e) { tz = null; tzFmt = null; delete o.timeZone; }
+  }
+  return d.toLocaleDateString('ca', o);
+}
+
+// Dia sencer (AAAA-MM-DD) sense zona: es formata a migdia UTC perquè cap zona el canviï de dia.
+function fmtDay(key, o) {
+  var p = key.split('-');
+  o.timeZone = 'UTC';
+  return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12)).toLocaleDateString('ca', o);
+}
 
 function weatherText(code) {
   for (var i = 0; i < WEATHER.length; i++) {
@@ -43,29 +94,28 @@ function node(tag, cls, text) {
   return n;
 }
 
-function dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-
-function dayLabel(d) {
-  var today = nowDate(); today.setHours(0, 0, 0, 0);
-  var diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
+function dayLabel(key) {
+  var diff = dayNum(key) - dayNum(dayKey(nowDate()));
   if (diff === 0) return 'Avui';
   if (diff === 1) return 'Demà';
-  return d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' });
+  return fmtDay(key, { weekday: 'long', day: 'numeric', month: 'long' });
 }
-
-function parseDay(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
 
 function renderWeather() {
   var box = el('weather');
   box.textContent = '';
+  box.className = '';
   var w = data && data.weather;
   if (!w) return;
+  // Si el servidor fa estona que no refresca el temps (dades antigues de reserva), s'atenua.
+  var wAt = data.fetched_at && Date.parse(data.fetched_at.weather);
+  if (wAt && nowDate() - wAt > WEATHER_OLD_MS) box.className = 'old';
   box.appendChild(node('div', 'wnow', Math.round(w.temperature) + '° · ' + weatherText(w.code)));
   box.appendChild(node('div', 'wplace', w.place));
   var days = node('div', 'wdays');
-  for (var i = 1; i < w.days.length; i++) {
+  for (var i = 0; i < w.days.length; i++) {
     var d = w.days[i], item = node('div', 'wday');
-    item.appendChild(node('b', '', parseDay(d.date).toLocaleDateString('ca', { weekday: 'short' })));
+    item.appendChild(node('b', '', i === 0 ? 'avui' : fmtDay(d.date, { weekday: 'short' })));
     item.appendChild(document.createTextNode(Math.round(d.min) + '° / ' + Math.round(d.max) + '° ' + weatherText(d.code)));
     days.appendChild(item);
   }
@@ -80,21 +130,30 @@ function renderEvents() {
     list.appendChild(node('li', 'empty', events ? 'Res previst' : 'Sense dades'));
     return;
   }
-  var now = nowDate(), shown = 0, lastDay = '';
-  for (var i = 0; i < events.length && shown < MAX_EVENTS; i++) {
-    var e = events[i];
-    var start = e.all_day ? parseDay(e.start) : new Date(e.start);
-    var end = e.all_day ? parseDay(e.end) : new Date(e.end);
-    if (!e.all_day && end < now) continue; // ja ha acabat
-    var key = dayKey(start);
-    if (key !== lastDay) { list.appendChild(node('li', 'day', dayLabel(start))); lastDay = key; }
-    var li = node('li');
-    li.appendChild(node('span', 'when', e.all_day ? 'Tot el dia' : hhmm(start)));
-    li.appendChild(document.createTextNode(e.title));
-    list.appendChild(li);
-    shown++;
+  var now = nowDate(), today = dayKey(now), visible = [];
+  for (var i = 0; i < events.length; i++) {
+    var e = events[i], key;
+    if (e.all_day) {
+      if ((e.end || e.start) < today) continue; // ja ha acabat (end inclusiu)
+      key = e.start;
+    } else {
+      var start = new Date(e.start);
+      if (new Date(e.end) < now) continue; // ja ha acabat
+      key = dayKey(start);
+    }
+    if (key < today) key = today; // comença abans d'avui però encara dura: surt a "Avui"
+    visible.push({ e: e, key: key, start: start });
   }
-  if (!shown) list.appendChild(node('li', 'empty', 'Res previst'));
+  var lastDay = '';
+  visible.slice(0, MAX_EVENTS).forEach(function (v) {
+    if (v.key !== lastDay) { list.appendChild(node('li', 'day', dayLabel(v.key))); lastDay = v.key; }
+    var li = node('li');
+    li.appendChild(node('span', 'when', v.e.all_day ? 'Tot el dia' : hhmm(v.start)));
+    li.appendChild(document.createTextNode(v.e.title));
+    list.appendChild(li);
+  });
+  if (!visible.length) list.appendChild(node('li', 'empty', 'Res previst'));
+  else if (visible.length > MAX_EVENTS) list.appendChild(node('li', 'more', '+' + (visible.length - MAX_EVENTS) + ' més'));
 }
 
 function renderTasks() {
@@ -118,24 +177,36 @@ function renderStatus() {
     return;
   }
   var errors = data && data.errors ? Object.keys(data.errors) : [];
-  var stale = Date.now() - lastOk > STALE_MS || errors.length > 0;
-  status.textContent = 'servidor ' + hhmm(new Date(lastOk + clockOffsetMs)) + (errors.length ? ' · error: ' + errors.join(', ') : '');
+  // Es mostra l'edat de les dades (quan les va generar el servidor), no la de l'última petició.
+  var generated = data && data.generated ? Date.parse(data.generated) : NaN;
+  var stale = Date.now() - lastOk > STALE_MS || errors.length > 0 || paintFailed.length > 0;
+  var shownAt;
+  if (isNaN(generated)) shownAt = new Date(lastOk + clockOffsetMs);
+  else { shownAt = new Date(generated); if (nowDate() - generated > GENERATED_STALE_MS) stale = true; }
+  status.textContent = 'dades de ' + hhmm(shownAt) + (errors.length ? ' · error: ' + errors.join(', ') : '') +
+    (paintFailed.length ? ' · error de pintat: ' + paintFailed.join(', ') : '');
   status.className = stale ? 'stale' : '';
 }
 
 function tickClock() {
   var now = nowDate();
   el('time').textContent = hhmm(now);
-  el('date').textContent =
-    now.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  el('date').textContent = fmtDate(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   renderStatus();
 }
 
+// Una secció que falla no ha d'aturar les altres: es recorda quina i es mostra al peu.
+function paint(name, fn) {
+  var at = paintFailed.indexOf(name);
+  try { fn(); if (at !== -1) paintFailed.splice(at, 1); }
+  catch (e) { if (at === -1) paintFailed.push(name); }
+}
+
 function renderAll() {
-  renderWeather();
-  renderEvents();
-  renderTasks();
-  renderStatus();
+  paint('weather', renderWeather);
+  paint('events', renderEvents);
+  paint('tasks', renderTasks);
+  tickClock(); // també repinta el rellotge, per si ha canviat la zona
 }
 
 function updatePageIfStale(json) {
@@ -148,19 +219,34 @@ function updatePageIfStale(json) {
 }
 
 function refreshData() {
-  fetch(DATA_URL, { cache: 'no-store' })
+  if (inflight) return; // una petició penjada no s'ha d'acumular amb les següents
+  inflight = true;
+  var id = ++reqId, ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  function finish() { if (id === reqId) { inflight = false; clearTimeout(timer); } }
+  // Si el servidor no respon, es talla als 10 s i s'allibera el senyalador encara que l'abort no arribi.
+  var timer = setTimeout(function () { if (ctl) ctl.abort(); finish(); }, FETCH_TIMEOUT_MS);
+  var req;
+  try { req = fetch(DATA_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined }); }
+  catch (e) { req = Promise.reject(e); }
+  req
     .then(function (r) {
       if (!r.ok) throw new Error(r.status);
       var serverTime = Date.parse(r.headers.get('Date'));
       if (!isNaN(serverTime)) { clockOffsetMs = serverTime - Date.now(); clockSynced = true; }
       return r.json();
     })
-    .then(function (json) { data = json; lastOk = Date.now(); renderAll(); updatePageIfStale(json); })
-    .catch(function () { renderStatus(); });
+    .then(function (json) {
+      data = json; lastOk = Date.now();
+      setZone(json && json.timezone);
+      try { updatePageIfStale(json); } catch (e) { /* no ha d'impedir pintar */ }
+      renderAll();
+    })
+    .catch(function () { try { renderStatus(); } catch (e) { /* res més a fer */ } })
+    .then(finish, finish);
 }
 
 tickClock();
 setInterval(tickClock, 1000);
-setInterval(function () { if (data) renderEvents(); }, 60 * 1000);
+setInterval(function () { if (data) { paint('events', renderEvents); renderStatus(); } }, 60 * 1000);
 refreshData();
 setInterval(refreshData, REFRESH_MS);

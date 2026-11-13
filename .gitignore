@@ -12,3 +12,7 @@ __pycache__/
 /server/.venv/
 /server/config.json
 /server/tasks.txt
+*.apk
+*.jks
+*.keystore
+*.p12

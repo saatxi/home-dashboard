@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
 DEPENDENCIES=(lsusb adb)
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-usage() {
+usage_text() {
     cat <<EOM
 
 Diagnòstic de la cadena USB -> usbipd-win -> WSL -> adb. No canvia res.
@@ -15,20 +17,21 @@ usage: ${SCRIPT_NAME} [options]
 options:
     -h|--help    Mostra aquesta ajuda
 
-dependencies: ${DEPENDENCIES[@]}
+dependencies: ${DEPENDENCIES[*]}
 
 examples:
     ${SCRIPT_NAME}
 
+
+sortida: el nombre de comprovacions que han fallat (0 = tot correcte)
 EOM
-    exit 1
 }
 
 main() {
-    while [ "$1" != "" ]; do
+    while [ $# -gt 0 ]; do
         case $1 in
         -h | --help)
-            usage
+            usage 0
             ;;
         *)
             print_error "Opció desconeguda '$1'"
@@ -37,6 +40,9 @@ main() {
         esac
         shift
     done
+
+    # Després d'analitzar els arguments: --help ha de funcionar sense lsusb ni adb
+    exit_on_missing_tools "${DEPENDENCIES[@]}"
 
     local failures=0
     check_wsl_kernel || failures=$((failures + 1))
@@ -50,12 +56,13 @@ main() {
 }
 
 check_wsl_kernel() {
-    if ! uname -r | grep -qi microsoft; then
+    if ! uname -r | grep -i microsoft >/dev/null; then
         print_error "No sembla WSL"
         return 1
     fi
     print_success "WSL: $(uname -r)"
-    if ! zcat /proc/config.gz 2>/dev/null | grep -q '^CONFIG_USBIP_VHCI_HCD'; then
+    # grep sense -q: llegeix tot el flux i evita un SIGPIPE a zcat (pipefail) que donaria un fals error
+    if ! zcat /proc/config.gz 2>/dev/null | grep '^CONFIG_USBIP_VHCI_HCD' >/dev/null; then
         print_error "Kernel sense USBIP VHCI"
         return 1
     fi
@@ -63,7 +70,7 @@ check_wsl_kernel() {
 }
 
 check_vhci_module() {
-    if ! lsmod | grep -q vhci_hcd; then
+    if ! lsmod | grep vhci_hcd >/dev/null; then
         print_error "vhci_hcd no carregat: sudo modprobe vhci_hcd"
         return 1
     fi
@@ -80,7 +87,7 @@ check_usb_bus() {
 
 check_allwinner_device() {
     local found
-    found=$(lsusb 2>/dev/null | grep -i '1f3a')
+    found=$(lsusb 2>/dev/null | grep -i '1f3a') || found=""
     if [ -z "$found" ]; then
         print_error "Cap dispositiu 1f3a visible (usbipd list / bind / attach)"
         return 1
@@ -98,9 +105,9 @@ check_udev_rule() {
 
 # adb start-server pot penjar-se des d'algunes shells: el límit evita bloquejar l'script
 check_adb() {
-    print_success "$(adb version | head -1)"
+    print_success "$(adb version | sed -n 1p)"
     local devices
-    devices=$(timeout 15 adb devices -l 2>/dev/null | tail -n +2 | grep -v '^$')
+    devices=$(timeout 15 adb devices -l 2>/dev/null | tail -n +2 | grep -v '^$') || devices=""
     if [ -z "$devices" ]; then
         print_error "adb no veu cap dispositiu (o el servidor no respon en 15 s)"
         return 1
@@ -109,7 +116,5 @@ check_adb() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    exit_on_missing_tools "${DEPENDENCIES[@]}"
     main "$@"
-    exit $?
 fi

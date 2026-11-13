@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
 DEPENDENCIES=(adb)
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-CHANGES_LOG="${ROOT}/frames/xoro/changes.jsonl"
+KIOSK_PACKAGE="local.homedashboard.kiosk" # package de kiosk/AndroidManifest.xml
+PERSIST_ATTEMPTS="${PERSIST_ATTEMPTS:-6}"
+PERSIST_INTERVAL="${PERSIST_INTERVAL:-5}"
 STEP_PACKAGES=(
     "example:com.example"
     "uhale:com.zeasn.frame"
 )
 
-usage() {
+usage_text() {
     cat <<EOM
 
 Hardening REVERSIBLE del marc: només desactiva apps amb 'pm disable-user' (no toca particions).
@@ -27,13 +31,14 @@ commands:
 
 steps:
     example             com.example (app de test de fàbrica TS8ProdutionTest)
-    uhale               com.zeasn.frame (Uhale); exigeix un altre HOME disponible
+    uhale               com.zeasn.frame (Uhale); exigeix el kiosk (${KIOSK_PACKAGE}) instal·lat
+                        i un altre HOME disponible
 
 options:
     -y|--yes            No demanis confirmació (només per a 'apply')
     -h|--help           Mostra aquesta ajuda
 
-dependencies: ${DEPENDENCIES[@]}
+dependencies: ${DEPENDENCIES[*]}
 
 examples:
     ${SCRIPT_NAME} snapshot
@@ -41,7 +46,6 @@ examples:
     ${SCRIPT_NAME} revert example
 
 EOM
-    exit 1
 }
 
 main() {
@@ -49,15 +53,19 @@ main() {
     local step=""
     local assume_yes=false
 
-    while [ "$1" != "" ]; do
+    while [ $# -gt 0 ]; do
         case $1 in
         -y | --yes)
             assume_yes=true
             ;;
         -h | --help)
-            usage
+            usage 0
             ;;
         snapshot | status | apply | revert)
+            if [ -n "$command" ]; then
+                print_error "Només es pot indicar una ordre ('${command}' i '$1')"
+                usage
+            fi
             command="$1"
             ;;
         *)
@@ -73,6 +81,11 @@ main() {
     done
 
     if [ -z "$command" ]; then
+        print_error "Cal indicar una ordre"
+        usage
+    fi
+    if [ -n "$step" ] && [ "$command" != apply ] && [ "$command" != revert ]; then
+        print_error "'${command}' no admet cap pas ('${step}')"
         usage
     fi
 
@@ -96,7 +109,7 @@ main() {
 
 take_snapshot() {
     local out
-    out="${ROOT}/diagnostics/$(date +%Y%m%d-%H%M%S)-pre-hardening"
+    out="${OUTPUT_ROOT}/diagnostics/$(date +%Y%m%d-%H%M%S)-pre-hardening"
     mkdir -p "$out" || {
         print_error "No es pot crear ${out}"
         exit 1
@@ -132,16 +145,22 @@ show_status() {
     local entry package state
     for entry in "${STEP_PACKAGES[@]}"; do
         package="${entry#*:}"
-        state="$(package_state "$package")"
+        state="$(package_state "$package")" || exit 1
         echo "${entry%%:*}  ${package}  ${state}"
     done
 }
 
 package_state() {
     local package="$1"
-    if ! adb shell pm list packages "$package" | tr -d '\r' | grep -qx "package:${package}"; then
+    local all disabled
+    # Es captura la sortida (sense pipe cap a grep -q): amb pipefail un SIGPIPE donaria falsos errors
+    if ! all="$(adb_sh pm list packages "$package")" || ! disabled="$(adb_sh pm list packages -d "$package")"; then
+        print_error "No es pot consultar 'pm list packages' (${package})"
+        return 1
+    fi
+    if ! grep -qx "package:${package}" <<<"$all"; then
         echo "no-instal·lat"
-    elif adb shell pm list packages -d "$package" | tr -d '\r' | grep -qx "package:${package}"; then
+    elif grep -qx "package:${package}" <<<"$disabled"; then
         echo "desactivat"
     else
         echo "activat"
@@ -175,7 +194,7 @@ run_step() {
         usage
     }
 
-    state="$(package_state "$package")"
+    state="$(package_state "$package")" || exit 1
     if [ "$state" = "no-instal·lat" ]; then
         print_error "${package} no està instal·lat"
         exit 1
@@ -198,22 +217,29 @@ apply_step() {
         print_warning "${package} ja està desactivat"
         return 0
     fi
-    if [ "$step" = "uhale" ] && ! has_other_home "$package"; then
-        print_error "${package} és l'únic HOME: desactivar-la deixaria el marc sense pantalla d'inici. No es fa res."
-        exit 1
+    if [ "$step" = "uhale" ]; then
+        require_kiosk_ready
+        if ! has_other_home "$package"; then
+            print_error "${package} és l'únic HOME: desactivar-la deixaria el marc sense pantalla d'inici. No es fa res."
+            exit 1
+        fi
     fi
     if [ "$assume_yes" != true ] && ! confirm "Desactivar ${package} (es desfà amb '${SCRIPT_NAME} revert ${step}')?"; then
         echo "Cancel·lat"
         return 0
     fi
 
-    if ! adb shell pm disable-user --user 0 "$package" | tr -d '\r'; then
+    if ! adb_sh pm disable-user --user 0 "$package"; then
         print_error "pm disable-user ha fallat"
         exit 1
     fi
     verify_state "$package" "desactivat"
-    wait_persisted "$package" "desactivat" || exit 1
-    log_change "disable ${package}" "pm enable ${package}"
+    log_change "disable ${package}" "adb shell pm enable ${package}" ||
+        print_warning "Canvi fet però no registrat; per desfer-lo: adb shell pm enable ${package}"
+    if ! wait_persisted "$package" "desactivat"; then
+        log_change "disable ${package}: persistència no confirmada" "adb shell pm enable ${package}" '"persisted":false' || true
+        exit 1
+    fi
 }
 
 revert_step() {
@@ -225,20 +251,24 @@ revert_step() {
         print_warning "${package} ja està activat"
         return 0
     fi
-    if ! adb shell pm enable "$package" | tr -d '\r'; then
+    if ! adb_sh pm enable "$package"; then
         print_error "pm enable ha fallat"
         exit 1
     fi
     verify_state "$package" "activat"
-    wait_persisted "$package" "activat" || exit 1
-    log_change "enable ${package} (revert ${step})" "pm disable-user --user 0 ${package}"
+    log_change "enable ${package} (revert ${step})" "adb shell pm disable-user --user 0 ${package}" ||
+        print_warning "Canvi fet però no registrat; per desfer-lo: adb shell pm disable-user --user 0 ${package}"
+    if ! wait_persisted "$package" "activat"; then
+        log_change "enable ${package} (revert ${step}): persistència no confirmada" "adb shell pm disable-user --user 0 ${package}" '"persisted":false' || true
+        exit 1
+    fi
 }
 
 verify_state() {
     local package="$1"
     local expected="$2"
     local state
-    state="$(package_state "$package")"
+    state="$(package_state "$package")" || exit 1
     if [ "$state" != "$expected" ]; then
         print_error "${package}: estat '${state}', s'esperava '${expected}'"
         exit 1
@@ -252,8 +282,9 @@ wait_persisted() {
     local expected="$2"
     local file="/data/system/users/0/package-restrictions.xml"
     local attempt line
-    for attempt in 1 2 3 4 5 6; do
-        line="$(adb shell "grep 'name=\"${package}\"' ${file}" | tr -d '\r')"
+    for ((attempt = 1; attempt <= PERSIST_ATTEMPTS; attempt++)); do
+        # grep sense coincidència (sortida 1) vol dir que encara no hi és: no és un error
+        line="$(adb_sh "grep 'name=\"${package}\"' ${file}")" || line=""
         if [ "$expected" = "desactivat" ] && [[ "$line" == *'enabled="3"'* ]]; then
             print_success "Canvi desat a ${file}"
             return 0
@@ -262,36 +293,52 @@ wait_persisted() {
             print_success "Canvi desat a ${file}"
             return 0
         fi
-        sleep 5
+        if [ "$attempt" -lt "$PERSIST_ATTEMPTS" ]; then
+            sleep "$PERSIST_INTERVAL"
+        fi
     done
     print_warning "No s'ha vist el canvi a ${file}; no reinicieu el marc encara"
     return 1
 }
 
+# El kiosk ha d'estar instal·lat (i actiu) abans de desactivar Uhale: ha de poder fer de HOME
+require_kiosk_ready() {
+    local kiosk_state
+    kiosk_state="$(package_state "$KIOSK_PACKAGE")" || exit 1
+    case "$kiosk_state" in
+    activat) ;;
+    desactivat)
+        print_error "El kiosk (${KIOSK_PACKAGE}) està desactivat: no es pot desactivar Uhale sense un HOME alternatiu. No es fa res."
+        exit 1
+        ;;
+    *)
+        print_error "El kiosk (${KIOSK_PACKAGE}) no està instal·lat: desactivar Uhale deixaria el marc sense HOME. No es fa res."
+        exit 1
+        ;;
+    esac
+}
+
 # Hi ha d'haver almenys una activitat HOME que no sigui del paquet que desactivem
+# (ni el FallbackHome d'Android, que no és una pantalla d'inici útil)
 has_other_home() {
     local package="$1"
-    adb shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME |
-        tr -d '\r' | grep -E '^[[:space:]]*[A-Za-z0-9_.]+/' | grep -qv "${package}/"
-}
-
-confirm() {
-    local reply
-    read -r -p "$1 (s/n): " -n 1 reply
-    echo
-    [[ "$reply" =~ ^[SsYy]$ ]]
-}
-
-log_change() {
-    local action="$1"
-    local undo="$2"
-    mkdir -p "$(dirname "$CHANGES_LOG")" || return 1
-    printf '{"date":"%s","action":"%s","writes_to_device":true,"undo":"adb shell %s"}\n' \
-        "$(date +%Y-%m-%d)" "$action" "$undo" >>"$CHANGES_LOG"
-    print_success "Registrat a ${CHANGES_LOG}"
+    local homes line
+    if ! homes="$(adb_sh cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME)"; then
+        print_error "No es poden consultar les activitats HOME"
+        exit 1
+    fi
+    while IFS= read -r line; do
+        if ! [[ "$line" =~ ^[[:space:]]*[A-Za-z0-9_.]+/ ]]; then
+            continue
+        fi
+        if [[ "$line" == *"${package}/"* ]] || [[ "$line" == *com.android.settings/*FallbackHome* ]]; then
+            continue
+        fi
+        return 0
+    done <<<"$homes"
+    return 1
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
-    exit 0
 fi

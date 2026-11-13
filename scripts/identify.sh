@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
 DEPENDENCIES=(adb)
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-usage() {
+usage_text() {
     cat <<EOM
 
 Volcat NOMÉS DE LECTURA del dispositiu a diagnostics/<data>/ (privat, ignorat per git).
@@ -16,20 +18,19 @@ usage: ${SCRIPT_NAME} [options]
 options:
     -h|--help    Mostra aquesta ajuda
 
-dependencies: ${DEPENDENCIES[@]}
+dependencies: ${DEPENDENCIES[*]}
 
 examples:
     ${SCRIPT_NAME}
 
 EOM
-    exit 1
 }
 
 main() {
-    while [ "$1" != "" ]; do
+    while [ $# -gt 0 ]; do
         case $1 in
         -h | --help)
-            usage
+            usage 0
             ;;
         *)
             print_error "Opció desconeguda '$1'"
@@ -44,7 +45,7 @@ main() {
     check_identity
 
     local out
-    out="${ROOT}/diagnostics/$(date +%Y%m%d-%H%M%S)"
+    out="${OUTPUT_ROOT}/diagnostics/$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$out" || {
         print_error "No es pot crear ${out}"
         exit 1
@@ -68,6 +69,7 @@ collect_dumps() {
     save_command "$out" meminfo 'head -5 /proc/meminfo'
     save_command "$out" packages 'pm list packages -f'
     save_command "$out" usb-state 'getprop sys.usb.state'
+    # shellcheck disable=SC2016 # s'expandeix al dispositiu, no aquí
     save_command "$out" sizes 'for d in mmcblk0 mmcblk0boot0 mmcblk0boot1; do echo $d $(cat /sys/block/$d/size 2>/dev/null) sectors; done'
     save_command "$out" su-perms 'ls -l /system/xbin/su /system/bin/su 2>&1'
     save_command "$out" wlan 'ip addr show 2>&1 | grep -v link/ether'
@@ -86,11 +88,11 @@ save_command() {
 print_summary() {
     local out="$1"
     print_header "Resum"
-    grep -E 'ro.hardware|ro.board.platform|ro.product.(model|brand)|ro.build.(fingerprint|version.release)|ro.secure|ro.debuggable' "${out}/getprop.txt"
+    # grep sense coincidències no és un error aquí
+    grep -E 'ro.hardware|ro.board.platform|ro.product.(model|brand)|ro.build.(fingerprint|version.release)|ro.secure|ro.debuggable' "${out}/getprop.txt" || true
     echo "Guardat a ${out} (conté dades privades: no commiteu)"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
-    exit 0
 fi

@@ -38,22 +38,32 @@ def find_endpoints(device):
         interface,
         custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN,
     )
+    if out_ep is None or in_ep is None:
+        sys.exit("No s'han trobat els endpoints bulk IN/OUT del dispositiu fastboot (interfície inesperada)")
     return out_ep, in_ep
 
 
 def getvar(out_ep, in_ep, name):
-    out_ep.write(f"getvar:{name}".encode())
+    """Retorna (respostes, correcte): correcte és False si hi ha FAIL, timeout o error USB."""
     replies = []
+    try:
+        out_ep.write(f"getvar:{name}".encode())
+    except usb.core.USBError as error:
+        return [f"<error USB: {error}>"], False
     while True:
         try:
             reply = bytes(in_ep.read(512, timeout=TIMEOUT_MS)).decode(errors="replace")
         except usb.core.USBTimeoutError:
             replies.append("<timeout>")
-            break
+            return replies, False
+        except usb.core.USBError as error:
+            replies.append(f"<error USB: {error}>")
+            return replies, False
         replies.append(reply)
-        if reply[:4] in ("OKAY", "FAIL"):
-            break
-    return replies
+        if reply[:4] == "FAIL":
+            return replies, False
+        if reply[:4] == "OKAY":
+            return replies, True
 
 
 def main():
@@ -61,10 +71,15 @@ def main():
     if not names:
         sys.exit(__doc__)
     out_ep, in_ep = find_endpoints(find_device())
+    failed = False
     for name in names:
         if not name.strip():
             continue
-        print(f"getvar:{name} -> {getvar(out_ep, in_ep, name)}")
+        replies, ok = getvar(out_ep, in_ep, name)
+        print(f"getvar:{name} -> {replies}")
+        failed = failed or not ok
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

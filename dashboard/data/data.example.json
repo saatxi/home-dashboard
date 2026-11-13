@@ -1,3 +1,29 @@
 {
-  "generated": "2026-01-01T00:00:00Z"
+  "generated": "2026-01-01T08:00:00+00:00",
+  "timezone": "Europe/Madrid",
+  "site_version": null,
+  "fetched_at": {
+    "weather": "2026-01-01T08:00:00+00:00",
+    "events": "2026-01-01T08:00:00+00:00",
+    "tasks": "2026-01-01T08:00:00+00:00"
+  },
+  "errors": {},
+  "weather": {
+    "place": "Premià de Dalt",
+    "temperature": 12.4,
+    "code": 3,
+    "days": [
+      {"date": "2026-01-01", "code": 3, "min": 7.2, "max": 15.1},
+      {"date": "2026-01-02", "code": 61, "min": 6.5, "max": 13.0},
+      {"date": "2026-01-03", "code": 0, "min": 5.0, "max": 14.2}
+    ]
+  },
+  "events": [
+    {"title": "Festa", "start": "2026-01-01", "end": "2026-01-01", "all_day": true},
+    {"title": "Dentista", "start": "2026-01-02T18:30:00+01:00", "end": "2026-01-02T19:30:00+01:00", "all_day": false}
+  ],
+  "tasks": [
+    {"text": "Comprar pa", "done": false},
+    {"text": "Pagar la factura de la llum", "done": true}
+  ]
 }

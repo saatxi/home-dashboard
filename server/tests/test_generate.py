@@ -165,6 +165,63 @@ def test_unconfigured_calendar_is_empty_not_error():
     assert data["events"] == [] and data["errors"] == {}
 
 
+# --- site_version
+
+def make_site(root):
+    (root / "css").mkdir(parents=True)
+    (root / "js").mkdir()
+    (root / "data").mkdir()
+    (root / "index.html").write_text("<html></html>")
+    (root / "css" / "style.css").write_text("body{}")
+    (root / "js" / "app.js").write_text("var a;")
+    return str(root)
+
+
+def test_site_version_stable_and_short(tmp_path):
+    site = make_site(tmp_path)
+    v = generate.site_version(site)
+    assert v == generate.site_version(site)
+    assert len(v) == 12 and int(v, 16) >= 0
+
+
+@pytest.mark.parametrize("name", ["index.html", "css/style.css", "js/app.js"])
+def test_site_version_changes_with_any_file(tmp_path, name):
+    site = make_site(tmp_path)
+    before = generate.site_version(site)
+    (tmp_path / name).write_text("canvi")
+    assert generate.site_version(site) != before
+
+
+def test_site_version_changes_with_new_file_and_path(tmp_path):
+    site = make_site(tmp_path)
+    before = generate.site_version(site)
+    (tmp_path / "js" / "b.js").write_text("x")
+    added = generate.site_version(site)
+    assert added != before
+    (tmp_path / "js" / "b.js").rename(tmp_path / "js" / "c.js")
+    assert generate.site_version(site) not in (before, added)
+
+
+def test_site_version_ignores_data(tmp_path):
+    site = make_site(tmp_path)
+    before = generate.site_version(site)
+    (tmp_path / "data" / "data.json").write_text('{"a": 1}')
+    assert generate.site_version(site) == before
+
+
+def test_site_version_none_without_index(tmp_path):
+    site = make_site(tmp_path)
+    (tmp_path / "index.html").unlink()
+    assert generate.site_version(site) is None
+
+
+def test_site_version_default_reads_dashboard_under_root(tmp_path, monkeypatch):
+    (tmp_path / "dashboard").mkdir()
+    site = make_site(tmp_path / "dashboard")
+    monkeypatch.setattr(generate, "ROOT", str(tmp_path))
+    assert generate.site_version() == generate.site_version(site)
+
+
 # --- build_data i fallback
 
 def boom(cfg):

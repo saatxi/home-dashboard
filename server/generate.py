@@ -5,9 +5,9 @@ El marc no surt a internet: tot el que és extern es consulta aquí i el marc no
 Cada secció és independent: si una falla es conserva l'última bona i s'anota a "errors".
 Config a server/config.json (fora de git; plantilla a config.example.json).
 """
+import hashlib
 import json
 import os
-import re
 import sys
 import tempfile
 import urllib.error
@@ -154,12 +154,24 @@ def read_tasks(cfg):
         return parse_tasks(f.read())
 
 
-def site_version():
-    """Versió de la pàgina, de <meta name="site-version"> a dashboard/index.html."""
+def site_version(dashboard_dir=None):
+    """Versió de la pàgina: hash curt d'index.html i de tot css/ i js/ (ruta relativa i contingut).
+
+    Canvia sola quan canvia qualsevol fitxer de la pàgina; data/ no hi entra. None si no es pot llegir.
+    """
+    base = dashboard_dir or os.path.join(ROOT, "dashboard")
     try:
-        with open(os.path.join(ROOT, "dashboard", "index.html"), encoding="utf-8") as f:
-            match = re.search(r'<meta name="site-version" content="([^"]+)"', f.read())
-        return match.group(1) if match else None
+        paths = [os.path.join(base, "index.html")]
+        for sub in ("css", "js"):
+            for dirpath, _, names in os.walk(os.path.join(base, sub)):
+                paths += [os.path.join(dirpath, n) for n in names]
+        digest = hashlib.sha256()
+        for path in sorted(paths, key=lambda p: os.path.relpath(p, base).replace(os.sep, "/")):
+            with open(path, "rb") as f:
+                content = f.read()
+            digest.update(os.path.relpath(path, base).replace(os.sep, "/").encode("utf-8") + b"\0")
+            digest.update(content + b"\0")
+        return digest.hexdigest()[:12]
     except OSError:
         return None
 

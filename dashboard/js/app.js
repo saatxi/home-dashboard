@@ -20,9 +20,9 @@ var paintFailed = [];
 // Zona horària de data.json (opcional); sense ella s'usa la del dispositiu.
 var tz = null;
 var tzFmt = null;
-// Versió d'aquesta pàgina (meta site-version). El marc guarda la pàgina a la memòria cau i pot
-// arrencar amb una versió antiga; si el servidor en té una altra, naveguem a ?v=<versió>.
-var PAGE_VERSION = (document.querySelector('meta[name="site-version"]') || {}).content;
+// Primera site_version que ha vist aquesta càrrega (hash del contingut de la pàgina, de data.json).
+// Si més endavant el servidor en publica una altra, la pàgina ha canviat i es recarrega.
+var pageVersion = null;
 // El rellotge del marc no és fiable (el RTC es perd quan es talla la corrent). L'hora bona és la del
 // servidor, que arriba a la capçalera Date de cada resposta de data.json.
 var clockOffsetMs = 0;
@@ -209,13 +209,12 @@ function renderAll() {
   tickClock(); // també repinta el rellotge, per si ha canviat la zona
 }
 
-function updatePageIfStale(json) {
-  var wanted = json && json.site_version ? String(json.site_version) : null;
-  if (!wanted || wanted === PAGE_VERSION) return;
-  // El guarda evita un bucle si, tot i anar a ?v=, la pàgina que arriba continua sent antiga.
-  var current = new URLSearchParams(location.search).get('v');
-  if (current === wanted) return;
-  location.replace(location.pathname + '?v=' + encodeURIComponent(wanted));
+// No pot entrar en bucle: després de recarregar, la primera versió vista ja és la nova.
+function reloadIfPageChanged(json) {
+  var seen = json && json.site_version ? String(json.site_version) : null;
+  if (!seen) return;
+  if (pageVersion === null) { pageVersion = seen; return; }
+  if (seen !== pageVersion) location.reload();
 }
 
 function refreshData() {
@@ -238,7 +237,7 @@ function refreshData() {
     .then(function (json) {
       data = json; lastOk = Date.now();
       setZone(json && json.timezone);
-      try { updatePageIfStale(json); } catch (e) { /* no ha d'impedir pintar */ }
+      try { reloadIfPageChanged(json); } catch (e) { /* no ha d'impedir pintar */ }
       renderAll();
     })
     .catch(function () { try { renderStatus(); } catch (e) { /* res més a fer */ } })

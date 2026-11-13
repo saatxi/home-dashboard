@@ -1,0 +1,19 @@
+# Servidor web del dashboard (unitat d'USUARI de systemd).
+# El camí del repositori és %h/home-dashboard (%h = carpeta personal): canvia'l a
+# WorkingDirectory i ExecStart si has clonat el repositori en un altre lloc.
+[Unit]
+Description=Home dashboard: servidor web estàtic
+
+[Service]
+Type=simple
+WorkingDirectory=%h/home-dashboard
+# --bind 127.0.0.1: només accessible des d'aquest equip (el marc hi arriba amb 'adb reverse').
+# Si el marc hi accedeix per Wi-Fi, canvia-ho per l'adreça LAN d'aquest equip (p. ex. 192.168.1.10)
+# o 0.0.0.0. Compte: llavors la pàgina (calendari i tasques) queda exposada a tota la xarxa local.
+ExecStart=/usr/bin/python3 %h/home-dashboard/server/static_server.py --bind 127.0.0.1 --port 8080 --directory %h/home-dashboard/dashboard
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

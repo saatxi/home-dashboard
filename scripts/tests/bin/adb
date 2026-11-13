@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Fake adb per als tests dels scripts. MAI parla amb cap dispositiu real.
+Estat a $FAKE_STATE (directori). Variables de control (totes opcionals):
+  FAKE_DEVICES      "SER1\tdevice;SER2\tdevice"  (defecte: "FAKE123\tdevice"; buit = cap)
+  FAKE_HARDWARE     ro.hardware (defecte sun50iw10p1)
+  FAKE_STREAM_MODE  good|empty|short|fail|garbage   (exec-out dd)
+  FAKE_STREAM_ONLY  nom de la ruta/clau afectada pel mode (defecte: totes)
+  FAKE_REMOTE_HASH_BAD=1  el hash remot no coincideix
+  FAKE_PM_FAIL=1    pm disable-user/enable fallen
+  FAKE_NO_PERSIST=1 package-restrictions.xml mai reflecteix el canvi
+  FAKE_HOMES        sortida de query-activities
+  FAKE_INSTALLED    paquets instal.lats (defecte "com.example com.zeasn.frame")
+  FAKE_ADB_HANG=1   'devices' penja
+"""
+import hashlib, json, os, re, sys, time
+
+state = os.environ.get("FAKE_STATE") or os.path.join(os.getcwd(), ".fake")
+os.makedirs(state, exist_ok=True)
+with open(os.path.join(state, "calls.log"), "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\n")
+
+SECT = 512
+PART_SIZES = {"boot": 2048, "env": 1024, "system": 4096, "UDISK": 2048, "media_data": 2048}  # sectors
+PART_ORDER = ["boot", "env", "system", "UDISK", "media_data"]
+BOOT_SECTORS = 1024
+HEAD = 2048
+TOTAL = HEAD + sum(PART_SIZES.values()) + 64  # 64 sectors de cua
+
+
+def layout():
+    start, out = HEAD, {}
+    for n in PART_ORDER:
+        out[n] = (start, PART_SIZES[n])
+        start += PART_SIZES[n]
+    return out, start
+
+
+def gen(seed, n):
+    block = hashlib.sha256(seed.encode()).digest()
+    reps = n // len(block) + 1
+    return (block * reps)[:n]
+
+
+def dd_bytes(cmd):
+    """Retorna (clau, bytes) per a una ordre dd."""
+    m = re.search(r"dd if=(\S+)", cmd)
+    dev = m.group(1)
+    if "/mmcblk0boot" in dev:
+        return dev, gen(dev, BOOT_SECTORS * SECT)
+    if "/by-name/" in dev:
+        name = dev.rsplit("/", 1)[1]
+        return name, gen(dev, PART_SIZES[name] * SECT)
+    skip = int(re.search(r"skip=(\d+)", cmd).group(1))
+    count = int(re.search(r"count=(\d+)", cmd).group(1))
+    return f"disk-{skip}", gen(f"disk:{skip}:{count}", count * SECT)
+
+
+def sh(cmd):
+    p = os.path.join(state, "pm.json")
+    pm = json.load(open(p)) if os.path.exists(p) else {"disabled": [], "persisted": []}
+    installed = os.environ.get("FAKE_INSTALLED", "com.example com.zeasn.frame").split()
+    parts = cmd.split()
+    out = sys.stdout.write
+
+    def save():
+        json.dump(pm, open(p, "w"))
+
+    if parts[:2] == ["getprop", "ro.hardware"]:
+        out(os.environ.get("FAKE_HARDWARE", "sun50iw10p1") + "\r\n")
+    elif parts[:2] == ["getprop", "ro.product.model"]:
+        out("CPF10PF\r\n")
+    elif parts[:2] == ["getprop", "ro.build.fingerprint"]:
+        out("Xoro/CPF10PF/fake:10/QP1A/eng.fake:eng/test-keys\r\n")
+    elif parts[:2] == ["getprop", "sys.usb.state"]:
+        out("adb\r\n")
+    elif cmd == "getprop":
+        out("[ro.hardware]: [sun50iw10p1]\r\n[ro.build.fingerprint]: [x]\r\n")
+    elif cmd == "id -u":
+        out("0\r\n")
+    elif cmd == "ls /dev/block/by-name":
+        out("\r\n".join(os.environ.get("FAKE_PARTS", "boot env system UDISK media_data mmcblk0 mmcblk0boot0").split()) + "\r\n")
+    elif cmd.startswith("[ -e /dev/block/mmcblk0boot"):
+        sys.exit(0)
+    elif parts[:2] == ["blockdev", "--getsize64"]:
+        dev = parts[2]
+        if "mmcblk0boot" in dev:
+            out(f"{BOOT_SECTORS * SECT}\r\n")
+        else:
+            out(f"{PART_SIZES[dev.rsplit('/', 1)[1]] * SECT}\r\n")
+    elif cmd == "cat /sys/block/mmcblk0/size":
+        out(f"{TOTAL}\r\n")
+    elif cmd.startswith("for p in /sys/block/mmcblk0/mmcblk0p*"):
+        lay, _ = layout()
+        for n in PART_ORDER:
+            out(f"{lay[n][0]} {lay[n][1]}\r\n")
+    elif cmd.startswith("dd if=") and cmd.endswith("| sha256sum"):
+        key, data = dd_bytes(cmd)
+        h = hashlib.sha256(data).hexdigest()
+        if os.environ.get("FAKE_REMOTE_HASH_BAD"):
+            h = "0" * 64
+        out(f"{h}  -\r\n")
+    elif parts[:3] == ["pm", "list", "packages"]:
+        rest = parts[3:]
+        only_d = "-d" in rest
+        pkgs = [x for x in rest if not x.startswith("-")]
+        for pkg in installed:
+            if pkgs and pkgs[0] not in pkg:
+                continue
+            if only_d and pkg not in pm["disabled"]:
+                continue
+            out(f"package:{pkg}\r\n")
+    elif parts[:2] == ["pm", "disable-user"]:
+        if os.environ.get("FAKE_PM_FAIL"):
+            out("Exception occurred while executing\r\n")
+            sys.exit(255)
+        pkg = parts[-1]
+        pm["disabled"].append(pkg)
+        if not os.environ.get("FAKE_NO_PERSIST"):
+            pm["persisted"].append(pkg)
+        save()
+        out(f"Package {pkg} new state: disabled-user\r\n")
+    elif parts[:2] == ["pm", "enable"]:
+        if os.environ.get("FAKE_PM_FAIL"):
+            sys.exit(255)
+        pkg = parts[-1]
+        pm["disabled"] = [x for x in pm["disabled"] if x != pkg]
+        if not os.environ.get("FAKE_NO_PERSIST"):
+            pm["persisted"] = [x for x in pm["persisted"] if x != pkg]
+        save()
+        out(f"Package {pkg} new state: enabled\r\n")
+    elif parts[0] == "grep" and "package-restrictions.xml" in cmd:
+        pkg = re.search(r'name="([^"]+)"', cmd).group(1)
+        flag = 3 if pkg in pm["persisted"] else 1
+        out(f'<pkg name="{pkg}" enabled="{flag}" />\r\n')
+    elif cmd.startswith("cmd package query-activities"):
+        out(os.environ.get("FAKE_HOMES", "2 activities found:\r\n  com.zeasn.frame/.Home\r\n  local.homedashboard.kiosk/.MainActivity\r\n").replace("\\n", "\r\n"))
+    elif parts[:2] == ["test", "-f"]:
+        f = os.path.join(state, "dev" + parts[2].replace("/", "_"))
+        sys.exit(0 if os.path.exists(f) else 1)
+    elif parts[:2] == ["rm", "-f"]:
+        f = os.path.join(state, "dev" + parts[2].replace("/", "_"))
+        if os.path.exists(f):
+            os.remove(f)
+    elif parts[0] == "chmod":
+        pass
+    elif parts[0] == "sha256sum" and len(parts) == 2:
+        f = os.path.join(state, "dev" + parts[1].replace("/", "_"))
+        out(hashlib.sha256(open(f, "rb").read()).hexdigest() + "  " + parts[1] + "\r\n")
+    elif parts[0] == "ls" and len(parts) >= 3 and parts[1] == "-l":
+        out(f"-rw-r--r-- 1 root root 123 2026-01-01 00:00 {parts[2].rstrip(';')}\r\n")
+    elif cmd == "getenforce":
+        out("Permissive\r\n")
+    elif parts[0] == "dumpsys" or parts[0] in ("settings", "cat", "head", "df", "ip", "ls", "for"):
+        out(f"fake output of: {cmd}\r\n")
+    else:
+        sys.stderr.write(f"fake adb: shell command not supported: {cmd}\n")
+        sys.exit(127)
+
+
+def main():
+    args = sys.argv[1:]
+    while args and args[0] in ("-s",):
+        args = args[2:]
+    if not args:
+        sys.exit(1)
+    c = args[0]
+    if c == "devices":
+        if os.environ.get("FAKE_ADB_HANG"):
+            time.sleep(60)
+        devs = os.environ.get("FAKE_DEVICES", "FAKE123\tdevice")
+        sys.stdout.write("List of devices attached\n")
+        for d in filter(None, devs.split(";")):
+            sys.stdout.write(d + "\n")
+        sys.stdout.write("\n")
+    elif c == "get-serialno":
+        sys.stdout.write("FAKE123\n")
+    elif c == "version":
+        sys.stdout.write("Android Debug Bridge version 0.0.0 (fake)\n")
+    elif c == "push":
+        src, dst = args[1], args[2]
+        if os.environ.get("FAKE_PUSH_FAIL"):
+            sys.exit(1)
+        data = open(src, "rb").read()
+        open(os.path.join(state, "dev" + dst.replace("/", "_")), "wb").write(data)
+    elif c == "shell":
+        sh(" ".join(args[1:]))
+    elif c == "exec-out":
+        cmd = " ".join(args[1:])
+        key, data = dd_bytes(cmd)
+        mode = os.environ.get("FAKE_STREAM_MODE", "good")
+        only = os.environ.get("FAKE_STREAM_ONLY")
+        if only and only != key:
+            mode = "good"
+        w = sys.stdout.buffer
+        if mode == "empty":
+            sys.exit(0)
+        if mode == "short":
+            w.write(data[: len(data) // 2])
+            w.flush()
+            sys.exit(0)
+        if mode == "fail":
+            w.write(data[: len(data) // 2])
+            w.flush()
+            sys.exit(1)
+        if mode == "slow":
+            w.write(data[: len(data) // 2])
+            w.flush()
+            time.sleep(30)
+            sys.exit(0)
+        if mode == "garbage":
+            data = b"dd: error reading\n" + data[18:]
+        w.write(data)
+    else:
+        sys.stderr.write(f"fake adb: unsupported: {args}\n")
+        sys.exit(1)
+
+
+main()

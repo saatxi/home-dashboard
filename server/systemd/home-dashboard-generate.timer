@@ -1,0 +1,10 @@
+# Executa home-dashboard-generate.service cada 10 minuts (unitat d'USUARI de systemd).
+[Unit]
+Description=Home dashboard: regenera data.json periòdicament
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

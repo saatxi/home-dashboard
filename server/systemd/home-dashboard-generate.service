@@ -1,0 +1,12 @@
+# Genera dashboard/data/data.json (unitat d'USUARI de systemd, la dispara el .timer).
+# El camí del repositori és %h/home-dashboard (%h = carpeta personal): canvia'l a
+# WorkingDirectory i ExecStart si has clonat el repositori en un altre lloc.
+# Cal haver creat l'entorn virtual abans: make venv
+[Unit]
+Description=Home dashboard: genera data.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/home-dashboard
+ExecStart=%h/home-dashboard/server/.venv/bin/python %h/home-dashboard/server/generate.py
+NoNewPrivileges=yes

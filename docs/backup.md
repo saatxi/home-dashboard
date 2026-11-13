@@ -24,10 +24,27 @@ Tot a `backups/<data-hora>/`, cada peça com a `<nom>.img.gz` + `<nom>.sha256` (
 
 `disk-head` i `disk-tail` es calculen de la geometria real del disc, no amb números fixos. No es desa `mmcblk0rpmb` (àrea protegida).
 
+## MANIFEST
+
+Cada carpeta de backup té un fitxer `MANIFEST`, que s'escriu durant la còpia:
+
+- Capçalera: `manifest_version=1`, `serial`, `fingerprint` (`ro.build.fingerprint`), `model`, `hardware` (`ro.hardware`), `date` (inici de la còpia), `with_data` i `only_data` (`true` o `false`, segons les opcions).
+- Una línia `piece <nom> <mida> <sha256> <live|exact>` per cada peça desada. `live` és una còpia en calent (UDISK); `exact` vol dir que el hash ha coincidit amb el del marc.
+- `complete=yes` només s'hi afegeix quan totes les peces han anat bé. Si la còpia falla, la carpeta queda sense aquesta línia i el script ho diu al final: no s'ha de fer servir.
+
 ## Verificació
 
-- Cada peça: el hash del flux es compara amb el que calcula el propi marc (`dd | sha256sum`); si no coincideix, el script s'atura amb codi 3.
-- `verify-backup.sh` rellegeix cada `.img.gz`: comprova SHA-256 i mida contra el `.sha256`, i que no hi hagi 64 KiB seguits de `0xCC` (símptoma d'un loader que restringeix lectures).
+Durant el backup:
+
+- Una peça només es desa com a `.img.gz` si la mida rebuda és exactament la mida esperada (la de la partició o la del tram del disc) i, excepte a les còpies en calent, el hash del flux coincideix amb el que calcula el propi marc (`dd | sha256sum`). Si no coincideix, el script s'atura amb codi 3.
+- Mentre es llegeix, la peça és un fitxer `<nom>.img.gz.partial`. Si la lectura falla o es talla (Ctrl-C), els `.partial` s'esborren i la carpeta queda sense `complete=yes`.
+
+Amb `verify-backup.sh` (només llegeix; surt amb codi 1 si hi ha cap problema):
+
+- Ha d'existir el `MANIFEST` i acabar amb `complete=yes`.
+- Totes les peces del `MANIFEST` han de ser a la carpeta, i no pot haver-hi cap `.img.gz` que no hi sigui. No pot quedar cap `.partial`.
+- Cada `.img.gz` es rellegeix: la mida i el SHA-256 han de coincidir amb el `.sha256`, que al seu torn ha de coincidir amb el `MANIFEST`. No pot contenir 65.535 bytes seguits de `0xCC` (símptoma d'un loader que restringeix lectures).
+- Un backup anterior al `MANIFEST` només dóna un avís: es verifica el que hi ha, però no es pot saber si hi falta cap peça.
 
 ## `/data` és una còpia en calent
 

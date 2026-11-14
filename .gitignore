@@ -16,3 +16,5 @@ __pycache__/
 *.jks
 *.keystore
 *.p12
+/services/homescreens/data/
+/services/homescreens/backgrounds/

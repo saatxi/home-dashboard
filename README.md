@@ -51,5 +51,6 @@ Abans d'escriure res al marc, comproveu que en podeu tornar: [docs/recovery.md](
 - [docs/recovery.md](docs/recovery.md): camí de tornada (ADB, fastboot, FEL) i resultats.
 - [docs/hardening.md](docs/hardening.md): canvis reversibles al marc i com desfer-los.
 - [docs/dashboard.md](docs/dashboard.md): des de zero fins al dashboard: servidor, kiosk i què vol dir el peu de la pàgina.
+- [docs/homescreens.md](docs/homescreens.md): avaluació d'alternatives (HomeScreens, Magic Frame, Kinboard), Docker, connexió del marc i proves d'estabilitat.
 - [docs/xoro-cpf10pf.md](docs/xoro-cpf10pf.md): notes del nostre exemplar (observacions nostres).
 - [docs/xoro-cpf10pf-reference.md](docs/xoro-cpf10pf-reference.md): notes copiades sense canvis d'un altre projecte, sobre una altra unitat de la mateixa plataforma. No són observacions nostres.

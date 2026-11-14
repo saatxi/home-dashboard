@@ -282,7 +282,66 @@ group_identify() {
     expect "identify amb altre hardware" 2 -- env FAKE_HARDWARE=other "$S/identify.sh"
 }
 
-ALL_GROUPS=(help require_device common backup_verify backup_fail backup_interrupt harden bootanimation args identify)
+group_webview() {
+    echo "== webview"
+    # status
+    fresh wv1
+    expect "webview status (sense actualització)" 0 -- "$S/webview.sh" status
+    has "status: versió de fàbrica" "74.0.3729.186"
+
+    # revert quan ja és el de fàbrica (ruta /product)
+    fresh wv2
+    expect "webview revert -y quan ja és el de fàbrica" 0 -- "$S/webview.sh" revert -y
+    has "revert: avís ja factory" "ja és el de fàbrica"
+    [ ! -e "${OUTPUT_ROOT}/frames/xoro/changes.jsonl" ] && ok "factory revert: res al log" || ko "factory revert: log no hauria de tenir res"
+
+    # revert quan hi ha actualització instal·lada (/data)
+    fresh wv3; export FAKE_WEBVIEW_UPDATED=1 CHANGES_LOG="${WORK}/wv3-changes.jsonl"
+    expect "webview revert -y amb actualització" 0 -- "$S/webview.sh" revert -y
+    has "revert: confirmació feta" "Revert fet"
+    check "revert: registrat al log" test -f "$CHANGES_LOG"
+    unset CHANGES_LOG
+
+    # install sense argument
+    fresh wv4
+    expect "webview install sense APK" nonzero -- "$S/webview.sh" install
+    has "install: missatge falta apk" "Falta el fitxer APK"
+
+    # install amb fitxer inexistent
+    fresh wv5
+    expect "webview install fitxer inexistent" nonzero -- "$S/webview.sh" install /no/existeix.apk
+    has "install: no es troba" "No es troba el fitxer"
+
+    # install sense backup
+    fresh wv6; mkdir -p "${OUTPUT_ROOT}"   # OUTPUT_ROOT sense backups/
+    # Creem un APK mínim fals perquè el check d'existència del fitxer no falli.
+    local fake_apk="${WORK}/fake.apk"; touch "$fake_apk"
+    expect "webview install sense backup" nonzero -- "$S/webview.sh" install "$fake_apk"
+    has "install: exigeix backup" "backup"
+    unset CHANGES_LOG
+}
+
+group_soak() {
+    echo "== soak"
+    # Sintaxi
+    fresh sk0
+    expect "soak --minutes invàlid" nonzero -- "$S/soak.sh" --minutes -1
+    expect "soak --minutes string" nonzero -- "$S/soak.sh" --minutes abc
+    expect "soak --minutes sense valor" nonzero -- "$S/soak.sh" --minutes
+
+    # Execució mínima: 1 iteració (SOAK_POLL_SECONDS=60 i --minutes 1 → (1*60)/60 = 1 iter).
+    fresh sk1; export SOAK_POLL_SECONDS=60
+    expect "soak 1 min (ràpid: 1 iteració)" 0 -- "$S/soak.sh" --minutes 1 --label test
+    local soak_dir
+    soak_dir="$(ls -d "${OUTPUT_ROOT}/diagnostics/soak-"* 2>/dev/null | head -1)"
+    check "soak: SUMMARY.txt creat" test -f "${soak_dir}/SUMMARY.txt"
+    check "soak: logcat.txt creat" test -f "${soak_dir}/logcat.txt"
+    check "soak: directori samples creat" test -d "${soak_dir}/samples"
+    has "soak: SUMMARY conté resultat" "RESULTAT:"
+    unset SOAK_POLL_SECONDS
+}
+
+ALL_GROUPS=(help require_device common backup_verify backup_fail backup_interrupt harden bootanimation args identify webview soak)
 if [ "$#" -gt 0 ]; then groups=("$@"); else groups=("${ALL_GROUPS[@]}"); fi
 for g in "${groups[@]}"; do
     if declare -F "group_${g}" >/dev/null; then "group_${g}"; else echo "Grup desconegut: $g (grups: ${ALL_GROUPS[*]})"; exit 2; fi

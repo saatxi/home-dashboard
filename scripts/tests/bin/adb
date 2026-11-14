@@ -150,6 +150,48 @@ def sh(cmd):
         out(f"-rw-r--r-- 1 root root 123 2026-01-01 00:00 {parts[2].rstrip(';')}\r\n")
     elif cmd == "getenforce":
         out("Permissive\r\n")
+    elif parts[:2] == ["pm", "path"] and len(parts) == 3:
+        pkg = parts[2]
+        p = os.path.join(state, "pm.json")
+        webview_updated = os.environ.get("FAKE_WEBVIEW_UPDATED")
+        if pkg == "com.android.webview":
+            if webview_updated:
+                out("package:/data/app/com.android.webview-1/base.apk\r\n")
+            else:
+                out("package:/product/app/webview/webview.apk\r\n")
+        else:
+            installed = os.environ.get("FAKE_INSTALLED", "com.example com.zeasn.frame").split()
+            if pkg in installed:
+                out(f"package:/system/app/{pkg}/{pkg}.apk\r\n")
+            else:
+                sys.exit(1)
+    elif parts[:2] == ["dumpsys", "webviewupdate"]:
+        if os.environ.get("FAKE_WEBVIEW_UPDATED"):
+            out("Current WebView Update Service state\r\n"
+                "  Current WebView package (name, version): (com.android.webview, 130.0.0.0)\r\n"
+                "  WebView packages:\r\n"
+                "    Valid package com.android.webview (versionName: 130.0.0.0, versionCode: 999999999, targetSdkVersion: 34)\r\n")
+        else:
+            out("Current WebView Update Service state\r\n"
+                "  Current WebView package (name, version): (com.android.webview, 74.0.3729.186)\r\n"
+                "  WebView packages:\r\n"
+                "    Valid package com.android.webview (versionName: 74.0.3729.186, versionCode: 373018605, targetSdkVersion: 29)\r\n")
+    elif parts[:2] == ["dumpsys", "meminfo"] and len(parts) == 3:
+        out("Applications Memory Usage (in Kilobytes):\r\n"
+            "** MEMINFO in pid 1234 [local.homedashboard.kiosk] **\r\n"
+            "                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap\r\n"
+            "                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free\r\n"
+            "                ------   ------   ------   ------   ------   ------   ------   ------\r\n"
+            "  TOTAL PSS:     45678      1234      567      123    98765   102400    51200    10240\r\n")
+    elif parts[:1] == ["screencap"]:
+        # Crea un PNG mínim vàlid (1x1 píxel negre) al path indicat.
+        dst = parts[-1]
+        import base64
+        # PNG 1x1 negre
+        PNG_1X1 = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+        f = os.path.join(state, "dev" + dst.replace("/", "_"))
+        open(f, "wb").write(PNG_1X1)
     elif parts[0] == "dumpsys" or parts[0] in ("settings", "cat", "head", "df", "ip", "ls", "for"):
         out(f"fake output of: {cmd}\r\n")
     else:
@@ -172,6 +214,41 @@ def main():
         for d in filter(None, devs.split(";")):
             sys.stdout.write(d + "\n")
         sys.stdout.write("\n")
+    elif c == "install":
+        if os.environ.get("FAKE_INSTALL_FAIL"):
+            sys.stderr.write("adb: failed to install\n")
+            sys.exit(1)
+        # Registra el paquet instal·lat (simula el WebView actualitzat).
+        apk_arg = args[-1] if args else ""
+        sys.stdout.write(f"Success ({apk_arg})\n")
+        # Marca el WebView com a actualitzat si l'APK sembla ser el WebView.
+        if "webview" in apk_arg.lower():
+            os.environ["FAKE_WEBVIEW_UPDATED"] = "1"
+    elif c == "uninstall":
+        pkg = args[1] if len(args) > 1 else ""
+        sys.stdout.write(f"Success ({pkg})\n")
+    elif c == "logcat":
+        # Logcat fals: mode continu (sense -d) no imprimeix res i espera fins que el maten;
+        # mode dump (-d) retorna buit i surt de seguida.
+        if "-d" in args:
+            sys.exit(0)
+        # Mode continu: dormim fins que el senyal de kill ens mati.
+        try:
+            import signal
+            signal.pause()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        sys.exit(0)
+    elif c == "pull":
+        src, dst = args[1], args[2] if len(args) > 2 else args[1]
+        # El fake adb hauria d'haver guardat el fitxer amb 'screencap' (shell).
+        f = os.path.join(state, "dev" + src.replace("/", "_"))
+        if os.path.exists(f):
+            import shutil
+            shutil.copy(f, dst)
+        else:
+            sys.stderr.write(f"fake adb: pull: not found: {src}\n")
+            sys.exit(1)
     elif c == "get-serialno":
         sys.stdout.write("FAKE123\n")
     elif c == "version":

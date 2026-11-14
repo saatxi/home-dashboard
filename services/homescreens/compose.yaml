@@ -1,0 +1,31 @@
+# HomeScreens autoallotjat en Docker.
+# Comandes habituals:
+#   docker compose -f services/homescreens/compose.yaml up -d --build
+#   docker compose -f services/homescreens/compose.yaml down
+#   docker compose -f services/homescreens/compose.yaml logs -f
+#
+# Editor:  http://127.0.0.1:3000/editor
+# Pantalla: http://127.0.0.1:3000/display
+#
+# El marc s'hi connecta amb:
+#   adb reverse tcp:3000 tcp:3000
+#   adb shell am start -n local.homedashboard.kiosk/.MainActivity --es url "http://127.0.0.1:3000/display"
+#
+# Per tornar al dashboard propi (port 8080):
+#   adb shell am start -n local.homedashboard.kiosk/.MainActivity --es url "http://127.0.0.1:8080/"
+
+services:
+  homescreens:
+    # Commit 0ff5bde del 2026-11-13. Canvieu el ref per actualitzar.
+    build:
+      context: https://github.com/home-screens/home-screens.git#0ff5bde750f34c7a3ab42d54f9b3a991a8a864fb
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Tot el que configureu (pantalles, mòduls, credencials) viu aquí.
+      - ./data:/app/data
+      # Fotos i vídeos de fons. Deixeu-ho buit si no en voleu.
+      - ./backgrounds:/app/public/backgrounds
+    environment:
+      TZ: Europe/Madrid
+    restart: unless-stopped

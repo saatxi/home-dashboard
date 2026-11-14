@@ -41,6 +41,13 @@ public class MainActivity extends Activity {
   // El rellotge del marc no és fiable: el reinici diari és un retard relatiu des de l'arrencada, no una hora.
   private static final long DAILY_RELOAD_MS = 24L * 60 * 60 * 1000;
   private static final int BOOTANIM_ATTEMPTS = 2;
+  // Proteccio contra un renderitzador que mora en bucle (p. ex. WebView massa pesat per a la RAM).
+  // Si el renderer mor MAX_RENDERER_DEATHS vegades en RENDERER_WINDOW_MS, el kiosk espera
+  // un retard exponencial (1, 2, 4... fins a RENDERER_BACKOFF_MAX_MS) i mostra la pagina empaquetada.
+  private static final int MAX_RENDERER_DEATHS = 3;
+  private static final long RENDERER_WINDOW_MS = 10L * 60 * 1000;   // 10 min
+  private static final long RENDERER_BACKOFF_BASE_MS = 60L * 1000;  // 1 min base
+  private static final long RENDERER_BACKOFF_MAX_MS = 30L * 60 * 1000; // 30 min maxim
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private static final String WAITING_HTML =
@@ -54,6 +61,10 @@ public class MainActivity extends Activity {
   // La càrrega principal ha fallat i hi ha un reintent armat. Android crida onPageFinished també
   // per a la pàgina d'error: sense aquest indicador, aquesta crida cancel·laria el reintent.
   private boolean loadFailed;
+  // Comptador de morts del renderitzador per a la proteccio de retard exponencial.
+  private int rendererDeathCount = 0;
+  private long rendererWindowStart = 0;
+  private int rendererBackoffStep = 0;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -261,14 +272,42 @@ public class MainActivity extends Activity {
     handler.postDelayed(reload, RETRY_MS);
   }
 
-  /** Substitueix el WebView mort pel seu procés de renderitzat per un de nou amb la mateixa configuració. */
+  /**
+   * Substitueix el WebView mort pel seu procés de renderitzat per un de nou amb la mateixa configuració.
+   * Si el renderer ha mort masses vegades en poc temps, espera un retard exponencial i mostra la
+   * pàgina empaquetada (rellotge) per evitar un bucle que deixaria el marc en negre.
+   */
   private void recreateWebView() {
+    long now = System.currentTimeMillis();
+    // Reinicia la finestra si han passat més de RENDERER_WINDOW_MS des de la primera mort.
+    if (rendererDeathCount > 0 && (now - rendererWindowStart) > RENDERER_WINDOW_MS) {
+      rendererDeathCount = 0;
+      rendererBackoffStep = 0;
+    }
+    if (rendererDeathCount == 0) {
+      rendererWindowStart = now;
+    }
+    rendererDeathCount++;
+    Log.w(TAG, "Mort del renderer #" + rendererDeathCount + " en la finestra actual");
+
     handler.removeCallbacks(reload);
     loadFailed = false;
     root.removeView(web);
     web.destroy();
     createWebView();
-    web.loadUrl(url);
+
+    if (rendererDeathCount >= MAX_RENDERER_DEATHS) {
+      // Retard exponencial: 1, 2, 4… fins a RENDERER_BACKOFF_MAX_MS.
+      long backoffMs = Math.min(
+          RENDERER_BACKOFF_BASE_MS * (1L << rendererBackoffStep),
+          RENDERER_BACKOFF_MAX_MS);
+      rendererBackoffStep++;
+      Log.w(TAG, "Renderitzador massa inestable: esperant " + (backoffMs / 60000) + " min abans de tornar-ho a provar");
+      web.loadDataWithBaseURL(null, WAITING_HTML, "text/html", "utf-8", null);
+      handler.postDelayed(reload, backoffMs);
+    } else {
+      web.loadUrl(url);
+    }
   }
 
   private final Runnable reload = new Runnable() {

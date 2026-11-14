@@ -16,6 +16,7 @@ scripts/harden.sh revert <pas>      # torna a activar el paquet
 |---|---|---|---|
 | `example` | `pm disable-user --user 0 com.example` | App de test de fàbrica (`TS8ProdutionTest`) que pot enviar dades | `scripts/harden.sh revert example` |
 | `uhale` | `pm disable-user --user 0 com.zeasn.frame` | Uhale és el launcher de fàbrica i envia dades | `scripts/harden.sh revert uhale` |
+| `webview` | `adb install -r <apk>` (re-signat amb testkey AOSP) | Actualitza WebView 74 a una versió >= 80 per a compatibilitat CSS/JS | `scripts/webview.sh revert` (torna a 74 de /product) |
 
 **Estat 2026-11-08: el pas `uhale` està aplicat de nou, amb el kiosk propi (`kiosk/`) com a HOME.** Sense un HOME amb finestra pròpia el tàctil no funciona (vegeu «Lliçons»); no el torneu a aplicar si desinstal·leu el kiosk.
 

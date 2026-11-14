@@ -71,7 +71,7 @@ collect_dumps() {
     save_command "$out" usb-state 'getprop sys.usb.state'
     # shellcheck disable=SC2016 # s'expandeix al dispositiu, no aquí
     save_command "$out" sizes 'for d in mmcblk0 mmcblk0boot0 mmcblk0boot1; do echo $d $(cat /sys/block/$d/size 2>/dev/null) sectors; done'
-    save_command "$out" su-perms 'ls -l /system/xbin/su /system/bin/su 2>&1'
+    save_command "$out" su-perms 'ls -l /system/xbin/su /system/bin/su 2>&1; true'
     save_command "$out" wlan 'ip addr show 2>&1 | grep -v link/ether'
 }
 

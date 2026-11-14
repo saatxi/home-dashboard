@@ -13,6 +13,8 @@ Reinicieu si ho demana. Cable **USB-A → USB-C de dades** (USB-C a USB-C pot no
 ```bash
 sudo apt update
 sudo apt install -y android-sdk-platform-tools-common usbutils linux-tools-generic hwdata pigz
+# Eines addicionals per a scripts/webview.sh install (re-signatura d'APK):
+sudo apt install -y apksigner aapt openssl curl
 sudo modprobe vhci_hcd
 ```
 Regla udev perquè `adb` funcioni sense root:
@@ -49,4 +51,5 @@ adb shell id                      # esperat: uid=0(root)
   setsid nohup adb -L tcp:5037 server nodaemon >/dev/null 2>&1 </dev/null &
   adb devices -l
   ```
+- **`adb push`/`adb install` des de WSL gairebé no avancen** (provat el 2026-11-14: un APK de 94 MB anava a ~1% cada 30 min). El sentit marc → PC (backups) va bé, però el PC → marc per usbipd no. Per enviar fitxers grans: `adb kill-server` a WSL, `usbipd detach --busid <BUSID>` i feu servir l'`adb.exe` de Windows (`winget install Google.PlatformTools`). Després torneu a fer l'attach.
 - **`vhci_hcd` no carregat:** `sudo modprobe vhci_hcd` (cal fer-ho cada cop que es reinicia WSL).

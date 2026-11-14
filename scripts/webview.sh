@@ -22,7 +22,7 @@
 set -Eeuo pipefail
 
 DEPENDENCIES=(adb)
-INSTALL_DEPS=(apksigner aapt2 openssl curl)
+INSTALL_DEPS=(apksigner aapt openssl curl)
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
@@ -100,8 +100,8 @@ require_verified_backup() {
 check_apk_metadata() {
     local apk="$1"
     local badging
-    badging="$(aapt2 dump badging "$apk" 2>&1)" || {
-        print_error "aapt2 no pot llegir '${apk}': no és un APK vàlid?"
+    badging="$(aapt dump badging "$apk" 2>&1)" || {
+        print_error "aapt no pot llegir '${apk}': no és un APK vàlid?"
         exit 1
     }
 
@@ -165,15 +165,16 @@ fetch_testkeys() {
 }
 
 # Torna a signar l'APK amb la testkey d'AOSP. Desa l'APK signat a <apk>-signed.apk.
+# Escriu el path del fitxer signat a stdout; tots els missatges van a stderr.
 resign_apk() {
     local apk="$1" pk8="$2" pem="$3"
     local signed="${apk}-signed.apk"
 
-    print_header "Tornant a signar l'APK…"
+    print_header "Tornant a signar l'APK…" >&2
     # Eliminar la firma existent i re-signar.
     # apksigner sign --ks no funciona amb PK8+PEM; cal --key i --cert.
-    apksigner sign --key "$pk8" --cert "$pem" --out "$signed" "$apk" 2>&1
-    apksigner verify "$signed" 2>&1 && print_success "Signatura verificada"
+    apksigner sign --key "$pk8" --cert "$pem" --out "$signed" "$apk" >&2
+    apksigner verify "$signed" >&2 && print_success "Signatura verificada" >&2
     printf '%s' "$signed"
 }
 
@@ -216,7 +217,7 @@ cmd_install() {
         exit 1
     fi
 
-    log_change "webview install $(aapt2 dump badging "$apk" | grep -oP "versionCode='\K[0-9]+")" \
+    log_change "webview install $(aapt dump badging "$apk" | grep -oP "versionCode='\K[0-9]+")" \
         "adb uninstall ${WEBVIEW_PKG}" \
         || print_warning "Canvi fet però no registrat"
 

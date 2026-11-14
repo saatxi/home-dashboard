@@ -182,7 +182,10 @@ def sh(cmd):
             "                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap\r\n"
             "                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free\r\n"
             "                ------   ------   ------   ------   ------   ------   ------   ------\r\n"
-            "  TOTAL PSS:     45678      1234      567      123    98765   102400    51200    10240\r\n")
+            "  Native Heap     3802     3724        0        0     5440     4843      596\r\n"
+            "        TOTAL    45678     1234      567        0     8580     6413     2166\r\n")
+    elif parts[:1] == ["date"]:
+        out("11-14 12:00:00.000\r\n")
     elif parts[:1] == ["screencap"]:
         # Crea un PNG mínim vàlid (1x1 píxel negre) al path indicat.
         dst = parts[-1]

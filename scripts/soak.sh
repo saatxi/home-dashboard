@@ -59,7 +59,7 @@ take_screenshot() {
     local out_file="$1"
     local tmp_remote="/sdcard/soak_cap.png"
     if adb shell screencap -p "$tmp_remote" 2>/dev/null; then
-        if adb pull "$tmp_remote" "$out_file" 2>/dev/null; then
+        if adb pull "$tmp_remote" "$out_file" >/dev/null 2>&1; then
             adb shell rm -f "$tmp_remote" 2>/dev/null || true
         fi
     fi
@@ -109,9 +109,18 @@ main() {
         "$(date -Iseconds)" "$minutes" "$dir_label" "$(device_serial)" \
         >"${out_dir}/meta.json"
 
-    # Recull un logcat continu en segon pla.
-    local logcat_file="${out_dir}/logcat.txt"
-    adb logcat -s HomeDashboard 2>/dev/null >"$logcat_file" &
+    # Recull un logcat continu en segon pla, només des d'ara: sense -T, logcat bolca
+    # primer tot el buffer antic i els comptadors inclourien incidents d'abans de la prova.
+    # L'hora ha de ser la del marc (el seu rellotge no coincideix amb el del PC).
+    local logcat_file="${out_dir}/logcat.txt" since=""
+    since="$(adb shell date "'+%m-%d %H:%M:%S.000'" 2>/dev/null | tr -d '\r')" || since=""
+    local logcat_args=(-s HomeDashboard)
+    if [[ "$since" =~ ^[0-9]{2}-[0-9]{2}\ [0-9:.]+$ ]]; then
+        logcat_args=(-T "$since" "${logcat_args[@]}")
+    else
+        print_warning "No s'ha pogut llegir l'hora del marc: el logcat inclourà línies antigues"
+    fi
+    adb logcat "${logcat_args[@]}" 2>/dev/null >"$logcat_file" &
     local logcat_pid=$!
     # shellcheck disable=SC2064
     trap "kill ${logcat_pid} 2>/dev/null || true" EXIT
@@ -140,7 +149,9 @@ main() {
         meminfo_kiosk="$(adb shell dumpsys meminfo local.homedashboard.kiosk 2>/dev/null | tr -d '\r' | head -30 || true)"
         printf '%s\n' "$meminfo_kiosk" >"${sample_dir}/meminfo_kiosk.txt"
         local pss_kb=0
-        pss_kb="$(printf '%s\n' "$meminfo_kiosk" | grep -oP 'TOTAL PSS:\s+\K\d+' | head -1 || echo 0)"
+        # Android 10: "        TOTAL   172173 ..."; versions noves: "TOTAL PSS:   172173 ...".
+        pss_kb="$(printf '%s\n' "$meminfo_kiosk" | grep -oP '^\s*TOTAL(\s+PSS:)?\s+\K\d+' | head -1)" || pss_kb=0
+        pss_kb="${pss_kb:-0}"
         if [ "$pss_kb" -gt "$pss_max" ]; then pss_max="$pss_kb"; fi
 
         # LMK.

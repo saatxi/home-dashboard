@@ -75,6 +75,10 @@ scripts/webview.sh install /ruta/al/webview.apk
 scripts/webview.sh revert
 ```
 
+Si `adb install` es queda a `Performing Streamed Install`, és l'usbipd de WSL, que va massa lent en el sentit PC → marc. L'APK signat ja és a `<apk>-signed.apk`: instal·leu-lo amb l'`adb.exe` de Windows (vegeu [wsl-setup.md](wsl-setup.md#problemes-habituals)) i afegiu la línia a `changes.jsonl` a mà.
+
+Per descarregar l'APK de LineageOS cal `git lfs pull`: si el baixeu directament de GitHub, obteniu el punter de text de Git LFS, no el binari.
+
 L'script verifica que l'APK és `com.android.webview`, té `minSdkVersion ≤ 29`, `versionCode > 373018605` i conté `armeabi-v7a`. El canvi es registra a `frames/xoro/changes.jsonl` com qualsevol altra modificació reversible.
 
 ## 4. Prova d'estabilitat (fase C del pla)

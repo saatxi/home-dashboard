@@ -338,6 +338,8 @@ group_soak() {
     check "soak: logcat.txt creat" test -f "${soak_dir}/logcat.txt"
     check "soak: directori samples creat" test -d "${soak_dir}/samples"
     has "soak: SUMMARY conté resultat" "RESULTAT:"
+    check "soak: PSS llegit del format d'Android 10" grep -q "PSS kiosk max: *44 MB" "${soak_dir}/SUMMARY.txt"
+    check "soak: logcat només des de l'hora del marc" grep -q "logcat -T 11-14 12:00:00.000 -s HomeDashboard" "${FAKE_STATE}/calls.log"
     unset SOAK_POLL_SECONDS
 }
 

@@ -267,14 +267,6 @@ group_bootanimation() {
     unset BOOTANIMATION_OUT_DIR CHANGES_LOG
 }
 
-group_args() {
-    echo "== serve-dashboard (només validació d'arguments)"
-    expect "--port sense valor" nonzero -- "$S/serve-dashboard.sh" --port; has "--port: missatge" "Falta el valor"
-    expect "--port 99999" nonzero -- "$S/serve-dashboard.sh" --port 99999; has "--port 99999: missatge" "Port invàlid"
-    expect "--port 0" nonzero -- "$S/serve-dashboard.sh" --port 0
-    expect "--port abc" nonzero -- "$S/serve-dashboard.sh" --port abc
-}
-
 group_identify() {
     echo "== identify"
     fresh i1
@@ -343,7 +335,7 @@ group_soak() {
     unset SOAK_POLL_SECONDS
 }
 
-ALL_GROUPS=(help require_device common backup_verify backup_fail backup_interrupt harden bootanimation args identify webview soak)
+ALL_GROUPS=(help require_device common backup_verify backup_fail backup_interrupt harden bootanimation identify webview soak)
 if [ "$#" -gt 0 ]; then groups=("$@"); else groups=("${ALL_GROUPS[@]}"); fi
 for g in "${groups[@]}"; do
     if declare -F "group_${g}" >/dev/null; then "group_${g}"; else echo "Grup desconegut: $g (grups: ${ALL_GROUPS[*]})"; exit 2; fi

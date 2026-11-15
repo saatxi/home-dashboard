@@ -60,7 +60,7 @@ options:
 
 dependencies: ${DEPENDENCIES[*]} (+ ${INSTALL_DEPS[*]} per a 'install')
 
-Claus AOSP (es descarreguen a ${ROOT}/server/.venv/../.. si no hi ha connexió, proporcioneu-les manualment):
+Claus AOSP (es descarreguen a ${ROOT} si no hi ha connexió, proporcioneu-les manualment):
     testkey.pk8      clau privada RSA en format DER
     testkey.x509.pem certificat públic X.509
 

@@ -8,18 +8,20 @@ Avui `server/generate.py` escriu `dashboard/data/data.json` i el kiosk mostra la
 
 | Projecte | Stack | Docker | URL de la pantalla | Llicència | Funciona avui al marc |
 |---|---|---|---|---|---|
-| **HomeScreens** | Next.js 16, React 19, Tailwind 4, config JSON | Sí | `:3000/display` | MIT | ✓ (pantalla de benvinguda OK amb WebView 74) |
+| **HomeScreens** | Next.js 16, React 19, Tailwind 4, config JSON | Sí | `:3000/display` | MIT | ✓ amb WebView 156 (prova de nit superada, vegeu [Resultats](#resultats-2026-11-14)) |
 | Magic Frame | Next.js 16, Postgres, Prisma, Caddy | Sí | `:80` | PolyForm NC | Parcialment |
 | Kinboard | Next.js 16, Supabase Postgres, 6 contenidors | Sí | `:3001` | PolyForm NC | Parcialment |
 | MagicMirror² | Node/Electron, mòduls JS | Comunitat | `:8080` | MIT | Per verificar |
 
-HomeScreens és MIT i no necessita base de dades, l'editor és un WebUI separat i el display és una URL clara. Les proves del 2026-11-14 mostren que la pantalla de benvinguda es renderitza correctament amb Chromium 74 (el WebView de fàbrica del marc). Els mòduls amb animations i CSS avançat probablement necessiten una versió més nova.
+HomeScreens és MIT i no necessita base de dades, l'editor és un WebUI separat i el display és una URL clara. Amb el WebView de fàbrica (Chromium 74) només es va provar la pantalla de benvinguda buida, que es veia bé. Amb pantalles reals s'ha provat amb el WebView 156.
 
 ## Limitacions a tenir en compte
 
-- **Rellotge:** el marc no té un RTC fiable. El nostre dashboard treu l'hora de la capçalera `Date` del servidor; el mòdul de rellotge de HomeScreens usa l'hora del dispositiu i mostrarà l'hora equivocada després d'un tall de corrent fins que el marc es sincronitzi.
+- **Rellotge:** el marc no té un RTC fiable. El nostre dashboard treu l'hora de la capçalera `Date` del servidor; el mòdul de rellotge de HomeScreens usa l'hora del dispositiu. Comprovat el 2026-11-14: el marc era al 30 de gener i HomeScreens mostrava *viernes, 30 de enero* amb l'hora equivocada.
+- **Idioma:** HomeScreens agafa el locale del marc, que està en castellà («sáb», «viernes»).
 - **Sense internet al marc:** el marc no surt a internet. Qualsevol mòdul que faci peticions des del navegador (imatges de Google Photos, Immich, API externes) fallarà llevat que HomeScreens ho proxegui. Comproveu si cada mòdul fa les peticions des del servidor o des del navegador.
-- **RAM:** el marc té 1 GB de RAM (~40 MB lliures en repòs). Un WebView modern amb React 19 pot consumir tot el marge. Vegeu la fase C de la prova d'estabilitat.
+- **RAM:** el marc té 1 GB de RAM. `MemFree` és baix (~40 MB), però el que compta és `MemAvailable`, que es manté per sobre de 300 MB fins i tot amb HomeScreens. Vegeu els [resultats](#resultats-2026-11-14).
+- **Túnel USB:** el marc arriba al servidor per `adb reverse`. Si l'adbd del marc es penja (ho va fer el 2026-11-14 amb `Check failed: payload.size() <= bytes_left` a `UsbFfs-worker`), es perden els túnels. La pàgina continua carregada però deixa de rebre dades: HomeScreens mostra «Not updating since …» i el kiosk no ho detecta. Es recupera amb `adb reverse tcp:3000 tcp:3000`. Per a ús permanent, el marc hauria d'arribar al servidor per la Wi-Fi de casa.
 
 ## 1. Posar en marxa HomeScreens en Docker
 
@@ -104,6 +106,24 @@ Els resultats van a `diagnostics/soak-<data>-<label>/SUMMARY.txt`. Criteris d'ac
 - Les captures de pantalla mostren la pàgina sencera
 
 Si no es compleixen, `scripts/webview.sh revert` i continueu amb el dashboard propi.
+
+El `RESULTAT: OK` no detecta un túnel perdut: el renderitzador no mor i no hi ha errors de càrrega. Mireu també l'última captura, que ha de mostrar dades actuals i cap «Not updating».
+
+## Resultats (2026-11-14)
+
+WebView 156.0.8078.47 (`versionCode` 807804700, prebuilt arm de LineageOS) instal·lat amb l'`adb.exe` de Windows. No hi ha línia base amb el WebView 74: amb el marge mesurat no ha calgut.
+
+| Prova | Durada | Morts renderer / recàrregues / errors | MemAvailable mín. | PSS kiosk |
+|---|---|---|---|---|
+| Dashboard propi, WebView 156 | 2 h | 0 / 0 / 0 | 451 MB | 165–179 MB, pla |
+| HomeScreens (rellotge, temps, tasques, agenda, trànsit; 2 pantalles) | 2 h | 0 / 0 / 0 | 339 MB | 207–266 MB (pic 311) |
+| HomeScreens, nit | 8 h | 0 / 0 / 0 | 323 MB | 214–262 MB (pic 318), sense tendència |
+
+- El PSS de HomeScreens puja i baixa amb la rotació de pantalles i torna a uns 210–220 MB: no hi ha fuga.
+- Les captures mostren la pàgina sencera i dades que s'actualitzen (el trànsit passa de 58 a 34 min durant la nit).
+- HomeScreens fa servir uns 100 MB més que el dashboard propi, amb més de 3× el marge mínim.
+
+**Conclusió:** el marc amb WebView 156 fa anar HomeScreens de manera estable. Abans de deixar-lo de manera permanent cal resoldre el rellotge del marc i, idealment, connectar-lo per Wi-Fi en lloc del túnel USB. El dashboard propi no té cap dels dos problemes.
 
 ## 5. Protecció del kiosk contra morts del renderitzador
 
